@@ -8,6 +8,7 @@ import 'dart:developer' as developer;
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:main_api/src/services/app_config.dart';
+import 'package:main_api/src/services/app_registry/app_registry_service.dart';
 
 // Ошибка платежного сервиса.
 // statusCode нужен, чтобы controller мог вернуть Flutter понятный HTTP-код.
@@ -111,17 +112,19 @@ class TBankPaymentService {
        _paymentReturnBaseUrl =
            paymentReturnBaseUrl ?? AppConfig.tBankPaymentReturnBaseUrl;
 
-  factory TBankPaymentService.forApp(
+  static Future<TBankPaymentService> forApp(
     String? appId, {
     Dio? dio,
     String? apiBaseUrl,
     String? paymentReturnBaseUrl,
-  }) {
+  }) async {
+    final credentials = await AppRegistryService.instance
+        .resolveTBankCredentials(appId);
     return TBankPaymentService(
       dio: dio,
       apiBaseUrl: apiBaseUrl,
-      terminalKey: AppConfig.tBankTerminalKeyForApp(appId),
-      password: AppConfig.tBankPasswordForApp(appId),
+      terminalKey: credentials['terminalKey'],
+      password: credentials['password'],
       paymentReturnBaseUrl: paymentReturnBaseUrl,
     );
   }

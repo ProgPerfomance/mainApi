@@ -28,6 +28,14 @@ Handler createAdminRouter({String basePath = '/admin'}) {
   router.post('/api/apps', AppRegistryAdminController.createApp);
   router.get('/api/apps/<appId>', AppRegistryAdminController.getApp);
   router.put('/api/apps/<appId>', AppRegistryAdminController.updateApp);
+  router.put(
+    '/api/apps/<appId>/tbank',
+    AppRegistryAdminController.updateTBankSettings,
+  );
+  router.post(
+    '/api/apps/<appId>/tbank/reveal',
+    AppRegistryAdminController.revealTBankSettings,
+  );
   router.get('/api/app/version', AppAdminController.getVersionSettings);
   router.put('/api/app/version', AppAdminController.updateVersionSettings);
 

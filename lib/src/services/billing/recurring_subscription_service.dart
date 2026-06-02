@@ -104,7 +104,7 @@ class RecurringSubscriptionService {
         'subscription_recurring_${settings.scope}_${settings.appId}_${now.millisecondsSinceEpoch}_${userId.oid}';
 
     try {
-      final charge = await TBankPaymentService.forApp(settings.appId)
+      final charge = await (await TBankPaymentService.forApp(settings.appId))
           .chargeRecurringPayment(
             orderId: orderId,
             amountKopecks: amountKopecks,

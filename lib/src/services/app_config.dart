@@ -137,6 +137,14 @@ class AppConfig {
     return jwtSecret;
   }
 
+  static String get settingsEncryptionSecret {
+    final value = get('SETTINGS_ENCRYPTION_KEY');
+    if (value != null && value.length >= 32) {
+      return value;
+    }
+    return adminSessionSecret;
+  }
+
   /// Геттер adminCookieSecure: решает, требовать ли HTTPS для cookie админки.
   /// Возвращает да/нет для продакшен-настройки.
   static bool get adminCookieSecure {

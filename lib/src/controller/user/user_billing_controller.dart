@@ -9,7 +9,7 @@ import 'package:main_api/src/helper/parse_request_data_helper.dart';
 import 'package:main_api/src/helper/response_helper.dart';
 import 'package:main_api/src/models/transaction.dart';
 import 'package:main_api/src/models/user.dart';
-import 'package:main_api/src/services/app_config.dart';
+import 'package:main_api/src/services/app_registry/app_registry_service.dart';
 import 'package:main_api/src/services/auth/jwt_service.dart';
 import 'package:main_api/src/services/billing/billing_service.dart';
 import 'package:main_api/src/services/database/collections.dart';
@@ -200,7 +200,7 @@ class UserBillingController {
       final user = User.fromJson(userData);
       final autoRenew = _parseBool(data['autoRenew']);
       final orderId = _buildTBankOrderId(prefix: 'subscription');
-      final payment = await TBankPaymentService.forApp(appId).initPayment(
+      final payment = await (await TBankPaymentService.forApp(appId)).initPayment(
         orderId: orderId,
         amountKopecks: amountKopecks,
         description:
@@ -329,9 +329,9 @@ class UserBillingController {
         );
       }
 
-      final state = await TBankPaymentService.forApp(
+      final state = await (await TBankPaymentService.forApp(
         _paymentAppId(paymentData),
-      ).getState(paymentId: savedPaymentId);
+      )).getState(paymentId: savedPaymentId);
       final expectedAmountKopecks = (paymentData['amountKopecks'] as num)
           .toInt();
       final now = DateTime.now().toUtc().toIso8601String();
@@ -595,9 +595,11 @@ class UserBillingController {
             ? where.eq('paymentId', paymentId)
             : where.eq('orderId', orderId),
       );
+      final credentials = await AppRegistryService.instance
+          .resolveTBankCredentials(_paymentAppId(paymentData));
       if (!TBankPaymentService.isValidNotificationToken(
         data,
-        AppConfig.tBankPasswordForApp(_paymentAppId(paymentData)),
+        credentials['password'] ?? '',
       )) {
         return Response.forbidden('Invalid token');
       }
@@ -822,7 +824,7 @@ class UserBillingController {
 
       final user = User.fromJson(userData);
       final orderId = _buildTBankOrderId(prefix: 'requests');
-      final payment = await TBankPaymentService.forApp(appId).initPayment(
+      final payment = await (await TBankPaymentService.forApp(appId)).initPayment(
         orderId: orderId,
         amountKopecks: amountKopecks,
         description:
@@ -945,9 +947,9 @@ class UserBillingController {
         );
       }
 
-      final state = await TBankPaymentService.forApp(
+      final state = await (await TBankPaymentService.forApp(
         _paymentAppId(paymentData),
-      ).getState(paymentId: savedPaymentId);
+      )).getState(paymentId: savedPaymentId);
       final expectedAmountKopecks = (paymentData['amountKopecks'] as num)
           .toInt();
       final now = DateTime.now().toUtc().toIso8601String();
@@ -1057,7 +1059,7 @@ class UserBillingController {
 
       final user = User.fromJson(userData);
       final orderId = _buildTBankOrderId();
-      final payment = await TBankPaymentService.forApp(appId).initPayment(
+      final payment = await (await TBankPaymentService.forApp(appId)).initPayment(
         orderId: orderId,
         amountKopecks: amountKopecks,
         description: data['description']?.toString() ?? 'Balance top-up',
@@ -1166,9 +1168,9 @@ class UserBillingController {
         );
       }
 
-      final state = await TBankPaymentService.forApp(
+      final state = await (await TBankPaymentService.forApp(
         _paymentAppId(paymentData),
-      ).getState(paymentId: savedPaymentId);
+      )).getState(paymentId: savedPaymentId);
       final expectedAmountKopecks = (paymentData['amountKopecks'] as num)
           .toInt();
       final now = DateTime.now().toUtc().toIso8601String();

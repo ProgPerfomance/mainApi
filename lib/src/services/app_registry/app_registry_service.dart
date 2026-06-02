@@ -1,5 +1,7 @@
+import 'package:main_api/src/services/app_config.dart';
 import 'package:main_api/src/services/database/collections.dart';
 import 'package:main_api/src/services/database/mongo_service.dart';
+import 'package:main_api/src/services/security/encryption_service.dart';
 import 'package:mongo_dart/mongo_dart.dart';
 
 class AppRegistryException implements Exception {
@@ -111,6 +113,112 @@ class AppRegistryService {
     return _toPublicJson(updated!);
   }
 
+  Future<Map<String, dynamic>> updateTBankSettings({
+    required String appId,
+    String? terminalKey,
+    String? password,
+    bool? enabled,
+    bool clearTerminalKey = false,
+    bool clearPassword = false,
+  }) async {
+    final normalizedAppId = _normalizeAppId(appId);
+    final existing = await _apps.findOne(where.eq('appId', normalizedAppId));
+    if (existing == null) {
+      throw const AppRegistryException('App not found', statusCode: 404);
+    }
+
+    final current = existing['tBankSettings'] is Map
+        ? Map<String, dynamic>.from(existing['tBankSettings'] as Map)
+        : <String, dynamic>{};
+    final next = <String, dynamic>{...current};
+    final normalizedTerminalKey = _stringOrNull(terminalKey);
+    final normalizedPassword = _stringOrNull(password);
+
+    if (enabled != null) {
+      next['enabled'] = enabled;
+    } else {
+      next['enabled'] = current['enabled'] != false;
+    }
+    if (clearTerminalKey) {
+      next.remove('terminalKeyEncrypted');
+    } else if (normalizedTerminalKey != null) {
+      next['terminalKeyEncrypted'] = await EncryptionService.instance
+          .encryptString(normalizedTerminalKey);
+    }
+    if (clearPassword) {
+      next.remove('passwordEncrypted');
+    } else if (normalizedPassword != null) {
+      next['passwordEncrypted'] = await EncryptionService.instance.encryptString(
+        normalizedPassword,
+      );
+    }
+    next['updatedAt'] = DateTime.now().toUtc().toIso8601String();
+
+    final result = await _apps.updateOne(
+      where.eq('appId', normalizedAppId),
+      modify
+          .set('tBankSettings', next)
+          .set('updatedAt', DateTime.now().toUtc().toIso8601String()),
+    );
+    if (!result.isSuccess || result.nMatched == 0) {
+      throw const AppRegistryException('App not found', statusCode: 404);
+    }
+    final updated = await _apps.findOne(where.eq('appId', normalizedAppId));
+    return _toPublicJson(updated!);
+  }
+
+  Future<Map<String, dynamic>> revealTBankSettings(String appId) async {
+    final normalizedAppId = _normalizeAppId(appId);
+    final app = await _apps.findOne(where.eq('appId', normalizedAppId));
+    if (app == null) {
+      throw const AppRegistryException('App not found', statusCode: 404);
+    }
+    final settings = app['tBankSettings'] is Map
+        ? Map<String, dynamic>.from(app['tBankSettings'] as Map)
+        : <String, dynamic>{};
+    final terminalKey = await EncryptionService.instance.decryptString(
+      settings['terminalKeyEncrypted'],
+    );
+    final password = await EncryptionService.instance.decryptString(
+      settings['passwordEncrypted'],
+    );
+    return {
+      ..._publicTBankSettings(settings),
+      'terminalKey': terminalKey,
+      'password': password,
+    };
+  }
+
+  Future<Map<String, String>> resolveTBankCredentials(String? appId) async {
+    final normalizedAppId = appId == null || appId.trim().isEmpty
+        ? null
+        : _normalizeAppId(appId);
+    if (normalizedAppId != null) {
+      final app = await _apps.findOne(where.eq('appId', normalizedAppId));
+      final settings = app?['tBankSettings'] is Map
+          ? Map<String, dynamic>.from(app?['tBankSettings'] as Map)
+          : null;
+      if (settings != null && settings['enabled'] != false) {
+        final terminalKey = await EncryptionService.instance.decryptString(
+          settings['terminalKeyEncrypted'],
+        );
+        final password = await EncryptionService.instance.decryptString(
+          settings['passwordEncrypted'],
+        );
+        if (_stringOrNull(terminalKey) != null && _stringOrNull(password) != null) {
+          return {
+            'terminalKey': terminalKey!,
+            'password': password!,
+          };
+        }
+      }
+    }
+    return {
+      'terminalKey': _tBankTerminalKeyFromEnv(normalizedAppId),
+      'password': _tBankPasswordFromEnv(normalizedAppId),
+    };
+  }
+
   Future<Map<String, dynamic>> getApp(String appId) async {
     final normalizedAppId = _normalizeAppId(appId);
     final app = await _apps.findOne(where.eq('appId', normalizedAppId));
@@ -131,6 +239,11 @@ class AppRegistryService {
       'settings': json['settings'] is Map
           ? Map<String, dynamic>.from(json['settings'] as Map)
           : <String, dynamic>{},
+      'tBankSettings': _publicTBankSettings(
+        json['tBankSettings'] is Map
+            ? Map<String, dynamic>.from(json['tBankSettings'] as Map)
+            : <String, dynamic>{},
+      ),
       'isActive': json['isActive'] != false,
       'createdAt': json['createdAt']?.toString(),
       'updatedAt': json['updatedAt']?.toString(),
@@ -153,5 +266,75 @@ class AppRegistryService {
   String? _stringOrNull(String? value) {
     final normalized = value?.trim();
     return normalized == null || normalized.isEmpty ? null : normalized;
+  }
+
+  Map<String, dynamic> _publicTBankSettings(Map<String, dynamic> settings) {
+    final terminalKeyConfigured = settings['terminalKeyEncrypted'] is Map;
+    final passwordConfigured = settings['passwordEncrypted'] is Map;
+    return {
+      'enabled': settings['enabled'] != false,
+      'terminalKeyConfigured': terminalKeyConfigured,
+      'passwordConfigured': passwordConfigured,
+      'configured': terminalKeyConfigured && passwordConfigured,
+      'updatedAt': settings['updatedAt']?.toString(),
+    };
+  }
+
+  String _tBankTerminalKeyFromEnv(String? appId) {
+    final appKey = _appScopedEnvKey(
+      prefix: 'TBANK',
+      appId: appId,
+      suffix: 'TERMINAL_KEY',
+    );
+    final value = (appKey == null ? null : _envNonEmpty(appKey)) ??
+        _envNonEmpty('TBANK_TERMINAL_KEY');
+    if (value == null) {
+      throw const AppRegistryException(
+        'T-Bank terminal key is not configured',
+        statusCode: 500,
+      );
+    }
+    return value;
+  }
+
+  String _tBankPasswordFromEnv(String? appId) {
+    final appKey = _appScopedEnvKey(
+      prefix: 'TBANK',
+      appId: appId,
+      suffix: 'PASSWORD',
+    );
+    final value = (appKey == null ? null : _envNonEmpty(appKey)) ??
+        _envNonEmpty('TBANK_PASSWORD');
+    if (value == null) {
+      throw const AppRegistryException(
+        'T-Bank password is not configured',
+        statusCode: 500,
+      );
+    }
+    return value;
+  }
+
+  String? _envNonEmpty(String key) {
+    final value = AppConfig.get(key)?.trim();
+    return value == null || value.isEmpty ? null : value;
+  }
+
+  String? _appScopedEnvKey({
+    required String prefix,
+    required String? appId,
+    required String suffix,
+  }) {
+    final normalizedAppId = appId?.trim();
+    if (normalizedAppId == null || normalizedAppId.isEmpty) {
+      return null;
+    }
+    final envAppId = normalizedAppId
+        .toUpperCase()
+        .replaceAll(RegExp(r'[^A-Z0-9]+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+    if (envAppId.isEmpty) {
+      return null;
+    }
+    return '${prefix}_${envAppId}_$suffix';
   }
 }
