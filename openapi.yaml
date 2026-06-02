@@ -1,0 +1,498 @@
+openapi: 3.0.3
+info:
+  title: Kirill API
+  description: API для управления пользователями, биллингом и чатами
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@kirill-api.com
+
+servers:
+  - url: http://localhost:8080
+    description: Development server
+
+tags:
+  - name: Auth
+    description: Аутентификация и управление пользователями
+  - name: Billing
+    description: Управление балансом и транзакциями
+  - name: Characters
+    description: Психологи для чата
+
+paths:
+  /api/v1/characters:
+    get:
+      tags:
+        - Characters
+      summary: Получение списка психологов
+      description: Возвращает список доступных психологов для клиента
+      responses:
+        '200':
+          description: Список психологов
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Character'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/auth/register:
+    post:
+      tags:
+        - Auth
+      summary: Создание нового аккаунта
+      description: Регистрация нового пользователя в системе
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - email
+                - password
+              properties:
+                name:
+                  type: string
+                  description: Имя пользователя
+                  example: Ivan Petrov
+                email:
+                  type: string
+                  format: email
+                  description: Email пользователя (уникальный)
+                  example: ivan@example.com
+                password:
+                  type: string
+                  format: password
+                  description: Пароль пользователя (минимум 6 символов)
+                  example: SecurePassword123
+                phoneNumber:
+                  type: string
+                  description: Номер телефона пользователя (опционально)
+                  example: '+79991234567'
+                referralCode:
+                  type: string
+                  description: Реферальный код (опционально)
+                  example: REF123456
+                avatarUrl:
+                  type: string
+                  format: uri
+                  description: URL аватара пользователя (опционально)
+                  example: https://example.com/avatar.jpg
+      responses:
+        '200':
+          description: Аккаунт успешно создан
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/UserPublic'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Пользователь с таким email уже существует
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/auth/login:
+    post:
+      tags:
+        - Auth
+      summary: Вход в систему
+      description: Аутентификация пользователя и получение его ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  description: Email пользователя
+                  example: ivan@example.com
+                password:
+                  type: string
+                  format: password
+                  description: Пароль пользователя
+                  example: SecurePassword123
+      responses:
+        '200':
+          description: Успешная аутентификация
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      _id:
+                        type: string
+                        description: ID пользователя
+                        example: 507f1f77bcf86cd799439011
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Неверный email или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/auth/profile:
+    post:
+      tags:
+        - Auth
+      summary: Получение профиля пользователя
+      description: Получение информации о пользователе по его ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - userId
+              properties:
+                userId:
+                  type: string
+                  description: ID пользователя
+                  example: 507f1f77bcf86cd799439011
+      responses:
+        '200':
+          description: Профиль пользователя
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    $ref: '#/components/schemas/UserPublic'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: Пользователь не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/billing/deposit:
+    post:
+      tags:
+        - Billing
+      summary: Пополнение баланса
+      description: Пополнение баланса пользователя (без интеграции платежной системы)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - userId
+                - amount
+              properties:
+                userId:
+                  type: string
+                  description: ID пользователя
+                  example: 507f1f77bcf86cd799439011
+                amount:
+                  type: number
+                  format: double
+                  description: Сумма пополнения
+                  example: 100.50
+                description:
+                  type: string
+                  description: Описание транзакции (опционально)
+                  example: Пополнение баланса
+      responses:
+        '200':
+          description: Баланс успешно пополнен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      transaction:
+                        $ref: '#/components/schemas/Transaction'
+                      newBalance:
+                        type: number
+                        format: double
+                        description: Новый баланс пользователя
+                        example: 150.50
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: Пользователь не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/billing/history:
+    post:
+      tags:
+        - Billing
+      summary: История транзакций пользователя
+      description: Возвращает текущий баланс и список транзакций конкретного пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - userId
+              properties:
+                userId:
+                  type: string
+                  description: ID пользователя
+                  example: 507f1f77bcf86cd799439011
+                limit:
+                  type: integer
+                  description: Количество транзакций в ответе. По умолчанию 50, максимум 200
+                  example: 50
+      responses:
+        '200':
+          description: История транзакций пользователя
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  data:
+                    type: object
+                    properties:
+                      balance:
+                        type: number
+                        format: double
+                        description: Текущий баланс пользователя
+                        example: 320.50
+                      transactions:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Transaction'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: Пользователь не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  schemas:
+    Character:
+      type: object
+      description: Психолог для чата
+      properties:
+        _id:
+          type: string
+          description: ID психолога
+          example: 507f1f77bcf86cd799439021
+        name:
+          type: string
+          description: Имя психолога
+          example: Ментор
+        avatarUrl:
+          type: string
+          format: uri
+          description: URL аватарки психолога
+          example: https://example.com/mentor.png
+        systemPrompt:
+          type: string
+          description: Системный промпт психолога
+          example: Ты спокойный и структурный помощник.
+        shortDescription:
+          type: string
+          description: Короткий текст психолога для карточки
+          example: Помогаю спокойно разобрать тревогу и сложные решения.
+        longDescription:
+          type: string
+          description: Длинный текст психолога для раскрытого описания
+          example: Работаю с тревогой, выгоранием и отношениями. Помогаю разложить ситуацию на понятные шаги и подобрать бережные практики.
+        createdAt:
+          type: string
+          format: date-time
+          description: Дата создания психолога
+          example: 2026-04-17T09:00:00.000Z
+        updatedAt:
+          type: string
+          format: date-time
+          description: Дата последнего обновления психолога
+          example: 2026-04-17T09:00:00.000Z
+
+    UserPublic:
+      type: object
+      description: Публичная информация о пользователе
+      properties:
+        _id:
+          type: string
+          description: ID пользователя
+          example: 507f1f77bcf86cd799439011
+        name:
+          type: string
+          description: Имя пользователя
+          example: Ivan Petrov
+        email:
+          type: string
+          format: email
+          description: Email пользователя
+          example: ivan@example.com
+        phoneNumber:
+          type: string
+          description: Номер телефона пользователя
+          example: '+79991234567'
+        referralCode:
+          type: string
+          description: Реферальный код
+          example: REF123456
+        avatarUrl:
+          type: string
+          format: uri
+          description: URL аватара
+          example: https://example.com/avatar.jpg
+        balance:
+          type: number
+          format: double
+          description: Баланс пользователя
+          example: 100.50
+        createdAt:
+          type: string
+          format: date-time
+          description: Дата создания аккаунта
+          example: 2026-04-15T12:00:00.000Z
+        updatedAt:
+          type: string
+          format: date-time
+          description: Дата последнего обновления
+          example: 2026-04-15T12:00:00.000Z
+
+    Transaction:
+      type: object
+      description: Информация о транзакции
+      properties:
+        _id:
+          type: string
+          description: ID транзакции
+          example: 507f1f77bcf86cd799439012
+        userId:
+          type: string
+          description: ID пользователя
+          example: 507f1f77bcf86cd799439011
+        userName:
+          type: string
+          description: Имя пользователя
+          example: Ivan Petrov
+        amount:
+          type: number
+          format: double
+          description: Сумма транзакции
+          example: 100.50
+        type:
+          type: string
+          enum: [deposit, withdrawal, payment]
+          description: Тип транзакции
+          example: deposit
+        description:
+          type: string
+          description: Описание транзакции
+          example: Пополнение баланса
+        createdAt:
+          type: string
+          format: date-time
+          description: Дата создания транзакции
+          example: 2026-04-15T12:00:00.000Z
+
+    Error:
+      type: object
+      description: Ошибка API
+      properties:
+        status:
+          type: string
+          example: error
+        errorMessage:
+          type: string
+          description: Сообщение об ошибке
+          example: Invalid request parameters
+        errorCode:
+          type: string
+          description: Стабильный код ошибки для обработки на клиенте
+          example: INSUFFICIENT_BALANCE
+        details:
+          type: object
+          description: Дополнительные структурированные данные об ошибке
+          additionalProperties: true
+          example:
+            currentBalance: 10.0
+            requiredAmount: 49.0
+            shortfall: 39.0
+
+  responses:
+    BadRequest:
+      description: Неверные параметры запроса
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            status: error
+            errorMessage: Invalid request parameters
+
+    InternalServerError:
+      description: Внутренняя ошибка сервера
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            status: error
+            errorMessage: Internal server error

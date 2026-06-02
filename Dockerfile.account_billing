@@ -1,0 +1,16 @@
+FROM dart:stable AS build
+
+WORKDIR /app
+COPY pubspec.* ./
+RUN dart pub get
+
+COPY . .
+RUN dart compile exe bin/account_billing_api.dart -o bin/account_billing_server
+
+FROM scratch
+WORKDIR /app
+COPY --from=build /runtime/ /
+COPY --from=build /app/bin/account_billing_server /app/bin/account_billing_server
+
+EXPOSE 5184
+CMD ["/app/bin/account_billing_server"]
