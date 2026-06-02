@@ -4,13 +4,157 @@
 
 import 'package:main_api/src/helper/parse_request_data_helper.dart';
 import 'package:main_api/src/helper/response_helper.dart';
+import 'package:main_api/src/models/subscription_plan.dart';
 import 'package:main_api/src/services/billing/billing_service.dart';
+import 'package:main_api/src/services/database/collections.dart';
+import 'package:main_api/src/services/database/mongo_service.dart';
 import 'package:mongo_dart/mongo_dart.dart';
 import 'package:shelf/shelf.dart';
 
 /// Класс BillingAdminController: описывает отдельную часть программы простыми блоками.
 /// Сам по себе комментарий ничего не возвращает; код внутри класса создаёт объекты, экраны или сервисы.
 class BillingAdminController {
+  static Future<Response> listSubscriptionPlans(Request request) async {
+    try {
+      final rawPlans = await _subscriptionPlansCollection
+          .find(where.sortBy('updatedAt', descending: true))
+          .toList();
+      return ResponseHelper.success(
+        data: rawPlans
+            .map((item) => SubscriptionPlan.fromJson(item).toPublicJson())
+            .toList(),
+      );
+    } catch (error) {
+      return ResponseHelper.error(
+        errorMessage: 'Internal server error: $error',
+        statusCode: 500,
+      );
+    }
+  }
+
+  static Future<Response> createSubscriptionPlan(Request request) async {
+    try {
+      final data = await parseRequestDataHelper(request);
+      final plan = _subscriptionPlanFromRequest(data);
+      final result = await _subscriptionPlansCollection.insertOne(
+        plan.toJson(),
+      );
+      if (!result.isSuccess) {
+        return ResponseHelper.error(
+          errorMessage: 'Failed to create subscription plan',
+          statusCode: 500,
+        );
+      }
+      final rawPlan = await _subscriptionPlansCollection.findOne(
+        where.eq('_id', result.id),
+      );
+      return ResponseHelper.success(
+        statusCode: 201,
+        data: SubscriptionPlan.fromJson(
+          rawPlan ?? plan.toJson(),
+        ).toPublicJson(),
+      );
+    } on FormatException catch (error) {
+      return ResponseHelper.error(errorMessage: error.message);
+    } catch (error) {
+      return ResponseHelper.error(
+        errorMessage: 'Internal server error: $error',
+        statusCode: 500,
+      );
+    }
+  }
+
+  static Future<Response> updateSubscriptionPlan(
+    Request request,
+    String id,
+  ) async {
+    try {
+      if (!ObjectId.isValidHexId(id)) {
+        return ResponseHelper.error(errorMessage: 'Invalid plan ID format');
+      }
+      final planId = ObjectId.fromHexString(id);
+      final existingRaw = await _subscriptionPlansCollection.findOne(
+        where.eq('_id', planId),
+      );
+      if (existingRaw == null) {
+        return ResponseHelper.error(
+          errorMessage: 'Subscription plan not found',
+          statusCode: 404,
+        );
+      }
+      final data = await parseRequestDataHelper(request);
+      final existing = SubscriptionPlan.fromJson(existingRaw);
+      final updated = _subscriptionPlanFromRequest(data, existing: existing);
+      final result = await _subscriptionPlansCollection.updateOne(
+        where.eq('_id', planId),
+        modify
+            .set('name', updated.name)
+            .set('scope', updated.scope)
+            .set('appIds', updated.appIds)
+            .set('app_ids', updated.appIds)
+            .set('benefitType', updated.benefitType)
+            .set('benefit_type', updated.benefitType)
+            .set('discountPercent', updated.discountPercent)
+            .set('price', updated.price)
+            .set('isActive', updated.isActive)
+            .set('updatedAt', updated.updatedAt.toIso8601String()),
+      );
+      if (!result.isSuccess) {
+        return ResponseHelper.error(
+          errorMessage: 'Failed to update subscription plan',
+          statusCode: 500,
+        );
+      }
+      final rawPlan = await _subscriptionPlansCollection.findOne(
+        where.eq('_id', planId),
+      );
+      return ResponseHelper.success(
+        data: SubscriptionPlan.fromJson(
+          rawPlan ?? updated.toJson(),
+        ).toPublicJson(),
+      );
+    } on FormatException catch (error) {
+      return ResponseHelper.error(errorMessage: error.message);
+    } catch (error) {
+      return ResponseHelper.error(
+        errorMessage: 'Internal server error: $error',
+        statusCode: 500,
+      );
+    }
+  }
+
+  static Future<Response> deleteSubscriptionPlan(
+    Request request,
+    String id,
+  ) async {
+    try {
+      if (!ObjectId.isValidHexId(id)) {
+        return ResponseHelper.error(errorMessage: 'Invalid plan ID format');
+      }
+      final result = await _subscriptionPlansCollection.deleteOne(
+        where.eq('_id', ObjectId.fromHexString(id)),
+      );
+      if (!result.isSuccess) {
+        return ResponseHelper.error(
+          errorMessage: 'Failed to delete subscription plan',
+          statusCode: 500,
+        );
+      }
+      if (result.nRemoved == 0) {
+        return ResponseHelper.error(
+          errorMessage: 'Subscription plan not found',
+          statusCode: 404,
+        );
+      }
+      return ResponseHelper.success(data: {'deleted': true, '_id': id});
+    } catch (error) {
+      return ResponseHelper.error(
+        errorMessage: 'Internal server error: $error',
+        statusCode: 500,
+      );
+    }
+  }
+
   /// Функция getAiRequestSettings: получает нужное значение и возвращает его вызывающему коду.
   /// Возвращает HTTP-ответ, который backend отправит клиенту.
   static Future<Response> getAiRequestSettings(Request request) async {
@@ -298,5 +442,105 @@ class BillingAdminController {
           request?.url.queryParameters['subscriptionScope'] ??
           request?.headers['x-subscription-scope'],
     );
+  }
+
+  static DbCollection get _subscriptionPlansCollection =>
+      MongoService.instance.db.collection(Collections.subscriptionPlans);
+
+  static SubscriptionPlan _subscriptionPlanFromRequest(
+    Map<String, dynamic> data, {
+    SubscriptionPlan? existing,
+  }) {
+    final name = data['name']?.toString().trim() ?? existing?.name ?? '';
+    if (name.isEmpty) {
+      throw const FormatException('Subscription name is required');
+    }
+
+    final scope = BillingService.normalizeSubscriptionScope(
+      data['scope']?.toString() ?? existing?.scope,
+    );
+    final appIds = _resolvePlanAppIds(data, existing, scope);
+    final benefitType = _resolvePlanBenefitType(data, existing);
+    final discountPercent = _resolvePlanDiscountPercent(
+      data,
+      benefitType,
+      existing,
+    );
+    final price = data['price'] == null
+        ? (existing?.price ?? 0)
+        : double.tryParse(data['price'].toString());
+    if (price == null || price < 0) {
+      throw const FormatException(
+        'Subscription price must be a non-negative number',
+      );
+    }
+
+    final now = DateTime.now().toUtc();
+    return SubscriptionPlan(
+      id: existing?.id,
+      name: name,
+      scope: scope,
+      appIds: appIds,
+      benefitType: benefitType,
+      discountPercent: discountPercent,
+      price: price,
+      isActive: data['isActive'] as bool? ?? existing?.isActive ?? true,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    );
+  }
+
+  static List<String> _resolvePlanAppIds(
+    Map<String, dynamic> data,
+    SubscriptionPlan? existing,
+    String scope,
+  ) {
+    if (scope == BillingService.subscriptionScopeGlobal) {
+      return [BillingService.globalAppId];
+    }
+    final rawAppIds = data['appIds'] ?? data['app_ids'];
+    if (rawAppIds is Iterable) {
+      final appIds = rawAppIds
+          .map((item) => BillingService.normalizeAppId(item?.toString()))
+          .where((item) => item.isNotEmpty)
+          .toSet()
+          .toList();
+      if (appIds.isNotEmpty) {
+        return appIds;
+      }
+    }
+    final existingAppIds = existing?.appIds;
+    if (existingAppIds != null && existingAppIds.isNotEmpty) {
+      return existingAppIds;
+    }
+    throw const FormatException('At least one app is required for app scope');
+  }
+
+  static String _resolvePlanBenefitType(
+    Map<String, dynamic> data,
+    SubscriptionPlan? existing,
+  ) {
+    final value =
+        data['benefitType']?.toString().trim().toLowerCase() ??
+        data['benefit_type']?.toString().trim().toLowerCase() ??
+        existing?.benefitType;
+    return value == 'request_discount' ? 'request_discount' : 'free_requests';
+  }
+
+  static double? _resolvePlanDiscountPercent(
+    Map<String, dynamic> data,
+    String benefitType,
+    SubscriptionPlan? existing,
+  ) {
+    if (benefitType != 'request_discount') {
+      return null;
+    }
+    final value = data['discountPercent'] == null
+        ? existing?.discountPercent
+        : double.tryParse(data['discountPercent'].toString());
+    if (value == null || value <= 0 || value > 100) {
+      throw const FormatException('Discount must be between 1 and 100');
+    }
+    return value;
   }
 }

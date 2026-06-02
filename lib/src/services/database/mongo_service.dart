@@ -188,6 +188,18 @@ class MongoService {
 
     // Индекс для сортировки заявок желаний по дате.
     await db
+        .collection(Collections.subscriptionPlans)
+        .createIndex(
+          keys: {'updatedAt': -1},
+          name: 'subscription_plans_updated_at_idx',
+        );
+
+    await db
+        .collection(Collections.subscriptionPlans)
+        .createIndex(keys: {'name': 1}, name: 'subscription_plans_name_idx');
+
+    // Индекс для сортировки заявок желаний по дате.
+    await db
         .collection(Collections.wishRequests)
         .createIndex(
           keys: {'appId': 1, 'createdAt': -1},

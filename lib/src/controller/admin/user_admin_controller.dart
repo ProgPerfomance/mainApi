@@ -5,6 +5,7 @@
 import 'dart:convert';
 
 import 'package:main_api/src/helper/response_helper.dart';
+import 'package:main_api/src/models/subscription_plan.dart';
 import 'package:main_api/src/models/transaction.dart';
 import 'package:main_api/src/models/user.dart';
 import 'package:main_api/src/services/billing/billing_service.dart';
@@ -384,17 +385,15 @@ class UserAdminController {
       final userId = ObjectId.fromHexString(id);
       final user = await _loadEnsuredUser(userId);
       final reason = data['reason']?.toString().trim();
-      final appIds = _resolveAppIds(data);
-      final appId = appIds.first;
-      final scope = _resolveScope(data);
+      final plan = await _loadSubscriptionPlan(
+        _resolveSubscriptionPlanId(data),
+      );
+      final planId = plan.id!;
+      final scope = plan.scope;
+      final appId = plan.primaryAppId;
       final subscriptionAppId = scope == BillingService.subscriptionScopeGlobal
           ? BillingService.globalAppId
           : appId;
-      final subscriptionAppIds = scope == BillingService.subscriptionScopeGlobal
-          ? <String>[BillingService.globalAppId]
-          : appIds;
-      final benefitType = _resolveBenefitType(data);
-      final discountPercent = _resolveDiscountPercent(data, benefitType);
       final now = DateTime.now().toUtc();
       final currentSubscription = user.subscriptionFor(
         scope: scope,
@@ -408,12 +407,14 @@ class UserAdminController {
       final nextSubscriptions = User.upsertSubscription(
         user.subscriptions,
         UserSubscription(
+          subscriptionId: planId,
+          subscriptionName: plan.name,
           scope: scope,
           appId: subscriptionAppId,
-          appIds: subscriptionAppIds,
+          appIds: plan.appIds,
           expiresAt: expiresAt,
-          benefitType: benefitType,
-          discountPercent: discountPercent,
+          benefitType: plan.benefitType,
+          discountPercent: plan.discountPercent,
           autoRenewEnabled: currentSubscription?.autoRenewEnabled ?? false,
           nextChargeAt: currentSubscription?.nextChargeAt,
           rebillId: currentSubscription?.rebillId,
@@ -464,17 +465,19 @@ class UserAdminController {
         description: adminSubscriptionGrantDescription,
         metadata: {
           'provider': 'admin_subscription_grant',
+          'subscriptionId': planId.oid,
+          'subscriptionName': plan.name,
           'adminName': adminName,
           'days': days,
           'appId': subscriptionAppId,
           'app_id': subscriptionAppId,
-          'appIds': subscriptionAppIds,
-          'app_ids': subscriptionAppIds,
+          'appIds': plan.appIds,
+          'app_ids': plan.appIds,
           'subscriptionScope': scope,
-          'benefitType': benefitType,
-          ...discountPercent == null
+          'benefitType': plan.benefitType,
+          ...plan.discountPercent == null
               ? const <String, dynamic>{}
-              : {'discountPercent': discountPercent},
+              : {'discountPercent': plan.discountPercent},
           'previousSubscriptionExpiresAt': currentSubscription?.expiresAt
               ?.toIso8601String(),
           'subscriptionExpiresAt': expiresAt.toIso8601String(),
@@ -563,9 +566,11 @@ class UserAdminController {
       final userId = ObjectId.fromHexString(id);
       final user = await _loadEnsuredUser(userId);
       final reason = data['reason']?.toString().trim();
-      final appIds = _resolveAppIds(data);
+      final planId = _resolveNullableSubscriptionPlanId(data);
+      final plan = planId == null ? null : await _loadSubscriptionPlan(planId);
+      final appIds = plan?.appIds ?? _resolveAppIds(data);
       final appId = appIds.first;
-      final scope = _resolveScope(data);
+      final scope = plan?.scope ?? _resolveScope(data);
       final subscriptionAppId = scope == BillingService.subscriptionScopeGlobal
           ? BillingService.globalAppId
           : appId;
@@ -576,6 +581,7 @@ class UserAdminController {
       );
       final nextSubscriptions = User.removeSubscription(
         user.subscriptions,
+        subscriptionId: plan?.id,
         scope: scope,
         appId: subscriptionAppId,
       );
@@ -622,6 +628,8 @@ class UserAdminController {
         description: adminSubscriptionClearDescription,
         metadata: {
           'provider': 'admin_subscription_clear',
+          if (plan?.id != null) 'subscriptionId': plan!.id!.oid,
+          if (plan != null) 'subscriptionName': plan.name,
           'adminName': adminName,
           'appId': subscriptionAppId,
           'app_id': subscriptionAppId,
@@ -698,6 +706,9 @@ class UserAdminController {
   /// Возвращает значение типа DbCollection; это готовый результат для следующего шага программы.
   static DbCollection get _transactionsCollection =>
       MongoService.instance.db.collection(Collections.transactions);
+
+  static DbCollection get _subscriptionPlansCollection =>
+      MongoService.instance.db.collection(Collections.subscriptionPlans);
 
   static SelectorBuilder _userSearchSelector(String searchQuery) {
     if (searchQuery.isEmpty) {
@@ -804,6 +815,45 @@ class UserAdminController {
     );
   }
 
+  static ObjectId _resolveSubscriptionPlanId(Map<String, dynamic> data) {
+    final rawValue =
+        data['subscriptionId']?.toString() ??
+        data['subscription_id']?.toString();
+    if (rawValue == null || !ObjectId.isValidHexId(rawValue)) {
+      throw const FormatException('Subscription plan is required');
+    }
+    return ObjectId.fromHexString(rawValue);
+  }
+
+  static ObjectId? _resolveNullableSubscriptionPlanId(
+    Map<String, dynamic> data,
+  ) {
+    final rawValue =
+        data['subscriptionId']?.toString() ??
+        data['subscription_id']?.toString();
+    if (rawValue == null || rawValue.trim().isEmpty) {
+      return null;
+    }
+    if (!ObjectId.isValidHexId(rawValue)) {
+      throw const FormatException('Invalid subscription plan ID');
+    }
+    return ObjectId.fromHexString(rawValue);
+  }
+
+  static Future<SubscriptionPlan> _loadSubscriptionPlan(ObjectId id) async {
+    final rawPlan = await _subscriptionPlansCollection.findOne(
+      where.eq('_id', id),
+    );
+    if (rawPlan == null) {
+      throw const FormatException('Subscription plan not found');
+    }
+    final plan = SubscriptionPlan.fromJson(rawPlan);
+    if (!plan.isActive) {
+      throw const FormatException('Subscription plan is disabled');
+    }
+    return plan;
+  }
+
   static List<String> _resolveAppIds(Map<String, dynamic> data) {
     final rawAppIds = data['appIds'] ?? data['app_ids'];
     if (rawAppIds is Iterable) {
@@ -823,27 +873,5 @@ class UserAdminController {
     return BillingService.normalizeSubscriptionScope(
       data['scope']?.toString() ?? data['subscriptionScope']?.toString(),
     );
-  }
-
-  static String _resolveBenefitType(Map<String, dynamic> data) {
-    final value = data['benefitType']?.toString().trim().toLowerCase();
-    if (value == User.subscriptionBenefitRequestDiscount) {
-      return User.subscriptionBenefitRequestDiscount;
-    }
-    return User.subscriptionBenefitFreeRequests;
-  }
-
-  static double? _resolveDiscountPercent(
-    Map<String, dynamic> data,
-    String benefitType,
-  ) {
-    if (benefitType != User.subscriptionBenefitRequestDiscount) {
-      return null;
-    }
-    final value = double.tryParse(data['discountPercent'].toString());
-    if (value == null || value <= 0 || value > 100) {
-      throw const FormatException('Discount must be between 1 and 100');
-    }
-    return value;
   }
 }

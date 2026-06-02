@@ -62,6 +62,22 @@ Handler createAdminRouter({String basePath = '/admin'}) {
     '/api/billing/request-packages/<id>',
     BillingAdminController.deleteRequestPackage,
   );
+  router.get(
+    '/api/subscriptions',
+    BillingAdminController.listSubscriptionPlans,
+  );
+  router.post(
+    '/api/subscriptions',
+    BillingAdminController.createSubscriptionPlan,
+  );
+  router.put(
+    '/api/subscriptions/<id>',
+    BillingAdminController.updateSubscriptionPlan,
+  );
+  router.delete(
+    '/api/subscriptions/<id>',
+    BillingAdminController.deleteSubscriptionPlan,
+  );
 
   // Пользователи и ручное изменение баланса через админку.
   router.get('/api/users', UserAdminController.listUsers);

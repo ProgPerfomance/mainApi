@@ -6,6 +6,8 @@ import 'package:mongo_dart/mongo_dart.dart';
 
 class UserSubscription {
   UserSubscription({
+    this.subscriptionId,
+    this.subscriptionName,
     required String scope,
     required String appId,
     List<String>? appIds,
@@ -23,6 +25,8 @@ class UserSubscription {
        appIds = _normalizeAppIds(appIds, appId),
        benefitType = _normalizeBenefitType(benefitType);
 
+  final ObjectId? subscriptionId;
+  final String? subscriptionName;
   final String scope;
   final String appId;
   final List<String> appIds;
@@ -60,6 +64,12 @@ class UserSubscription {
         json['app_id']?.toString() ??
         User.defaultAppId;
     return UserSubscription(
+      subscriptionId: User._parseObjectId(
+        json['subscriptionId'] ?? json['subscription_id'],
+      ),
+      subscriptionName: User._stringOrNull(
+        json['subscriptionName'] ?? json['subscription_name'],
+      ),
       scope: json['scope']?.toString() ?? User.subscriptionScopeApp,
       appId: appId,
       appIds: _parseAppIds(json['appIds'] ?? json['app_ids'], appId),
@@ -88,6 +98,10 @@ class UserSubscription {
 
   Map<String, dynamic> toJson() {
     return {
+      if (subscriptionId != null) 'subscriptionId': subscriptionId,
+      if (subscriptionId != null) 'subscription_id': subscriptionId,
+      if (subscriptionName != null) 'subscriptionName': subscriptionName,
+      if (subscriptionName != null) 'subscription_name': subscriptionName,
       'scope': scope,
       'appId': appId,
       'app_id': appId,
@@ -108,6 +122,10 @@ class UserSubscription {
 
   Map<String, dynamic> toPublicJson() {
     return {
+      if (subscriptionId != null) 'subscriptionId': subscriptionId!.oid,
+      if (subscriptionId != null) 'subscription_id': subscriptionId!.oid,
+      if (subscriptionName != null) 'subscriptionName': subscriptionName,
+      if (subscriptionName != null) 'subscription_name': subscriptionName,
       'scope': scope,
       'appId': appId,
       'app_id': appId,
@@ -125,6 +143,8 @@ class UserSubscription {
   }
 
   UserSubscription copyWith({
+    ObjectId? subscriptionId,
+    String? subscriptionName,
     String? scope,
     String? appId,
     List<String>? appIds,
@@ -139,6 +159,8 @@ class UserSubscription {
     DateTime? updatedAt,
   }) {
     return UserSubscription(
+      subscriptionId: subscriptionId ?? this.subscriptionId,
+      subscriptionName: subscriptionName ?? this.subscriptionName,
       scope: scope ?? this.scope,
       appId: appId ?? this.appId,
       appIds: appIds ?? this.appIds,
@@ -518,8 +540,16 @@ class User {
     final result = <UserSubscription>[];
     var updated = false;
     for (final subscription in subscriptions) {
-      if (subscription.scope == next.scope &&
-          subscription.appId == next.appId) {
+      final sameSubscriptionId =
+          subscription.subscriptionId != null &&
+          next.subscriptionId != null &&
+          subscription.subscriptionId == next.subscriptionId;
+      final sameLegacyScope =
+          subscription.subscriptionId == null &&
+          next.subscriptionId == null &&
+          subscription.scope == next.scope &&
+          subscription.appId == next.appId;
+      if (sameSubscriptionId || sameLegacyScope) {
         result.add(next);
         updated = true;
       } else {
@@ -534,9 +564,15 @@ class User {
 
   static List<UserSubscription> removeSubscription(
     List<UserSubscription> subscriptions, {
+    ObjectId? subscriptionId,
     required String scope,
     required String appId,
   }) {
+    if (subscriptionId != null) {
+      return subscriptions
+          .where((item) => item.subscriptionId != subscriptionId)
+          .toList();
+    }
     final normalizedScope = UserSubscription._normalizeScope(scope);
     final normalizedAppId = UserSubscription._normalizeAppId(appId);
     return subscriptions

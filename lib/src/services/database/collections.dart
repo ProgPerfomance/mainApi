@@ -14,4 +14,5 @@ class Collections {
   static const String promoCodes = 'promo_codes';
   static const String tbankPayments = 'tbank_payments';
   static const String requestPackages = 'request_packages';
+  static const String subscriptionPlans = 'subscription_plans';
 }
