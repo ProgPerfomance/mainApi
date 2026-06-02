@@ -66,6 +66,8 @@ Handler createAdminRouter({String basePath = '/admin'}) {
   // Пользователи и ручное изменение баланса через админку.
   router.get('/api/users', UserAdminController.listUsers);
   router.get('/api/users/<id>', UserAdminController.getUserProfile);
+  router.put('/api/users/<id>', UserAdminController.updateUser);
+  router.delete('/api/users/<id>', UserAdminController.deleteUser);
   router.put('/api/users/<id>/balance', UserAdminController.updateUserBalance);
   router.put(
     '/api/users/<id>/subscription',

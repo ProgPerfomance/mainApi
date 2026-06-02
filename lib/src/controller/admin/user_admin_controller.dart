@@ -110,6 +110,131 @@ class UserAdminController {
     }
   }
 
+  static Future<Response> updateUser(Request request, String id) async {
+    try {
+      if (!ObjectId.isValidHexId(id)) {
+        return ResponseHelper.error(errorMessage: 'Invalid user ID format');
+      }
+
+      final payload = await request.readAsString();
+      final data = payload.isEmpty
+          ? <String, dynamic>{}
+          : Map<String, dynamic>.from(jsonDecode(payload) as Map);
+      final name = data['name']?.toString().trim() ?? '';
+      final email = data['email']?.toString().trim().toLowerCase() ?? '';
+      final phoneNumber = data['phoneNumber']?.toString().trim();
+      final avatarUrl = data['avatarUrl']?.toString().trim();
+
+      if (name.isEmpty) {
+        return ResponseHelper.error(errorMessage: 'Name is required');
+      }
+      if (email.isEmpty || !email.contains('@')) {
+        return ResponseHelper.error(errorMessage: 'Valid email is required');
+      }
+
+      final userId = ObjectId.fromHexString(id);
+      final existingEmailUser = await _usersCollection.findOne(
+        where.eq('email', email).ne('_id', userId),
+      );
+      if (existingEmailUser != null) {
+        return ResponseHelper.error(
+          errorMessage: 'Email is already used',
+          statusCode: 409,
+        );
+      }
+
+      final now = DateTime.now().toUtc();
+      final result = await _usersCollection.updateOne(
+        where.eq('_id', userId),
+        modify
+            .set('name', name)
+            .set('email', email)
+            .set(
+              'phoneNumber',
+              phoneNumber?.isEmpty == true ? null : phoneNumber,
+            )
+            .set('avatarUrl', avatarUrl?.isEmpty == true ? null : avatarUrl)
+            .set('updatedAt', now.toIso8601String()),
+      );
+
+      if (!result.isSuccess || result.nMatched == 0) {
+        return ResponseHelper.error(
+          errorMessage: 'User not found',
+          statusCode: 404,
+        );
+      }
+
+      final updatedUser = await _loadEnsuredUser(userId);
+      final referrals = await _loadReferrals(userId);
+      final transactions = await _loadUserTransactions(userId);
+
+      return ResponseHelper.success(
+        data: {
+          ...updatedUser.toPublicJson(),
+          'referralsCount': referrals.length,
+          'referrals': referrals.map(_toReferralJson).toList(),
+          'transactions': transactions
+              .map((transaction) => transaction.toPublicJson())
+              .toList(),
+        },
+      );
+    } catch (error) {
+      return ResponseHelper.error(
+        errorMessage: 'Internal server error: $error',
+        statusCode: 500,
+      );
+    }
+  }
+
+  static Future<Response> deleteUser(Request request, String id) async {
+    try {
+      if (!ObjectId.isValidHexId(id)) {
+        return ResponseHelper.error(errorMessage: 'Invalid user ID format');
+      }
+
+      final userId = ObjectId.fromHexString(id);
+      final deleteUserResult = await _usersCollection.deleteOne(
+        where.eq('_id', userId),
+      );
+
+      if (!deleteUserResult.isSuccess) {
+        return ResponseHelper.error(
+          errorMessage: 'Failed to delete user',
+          statusCode: 500,
+        );
+      }
+      if (deleteUserResult.nRemoved == 0) {
+        return ResponseHelper.error(
+          errorMessage: 'User not found',
+          statusCode: 404,
+        );
+      }
+
+      final transactionsResult = await _transactionsCollection.deleteMany(
+        where.eq('userId', userId),
+      );
+      await _usersCollection.updateMany(
+        where.eq('referredByUserId', userId),
+        modify
+            .set('referredByUserId', null)
+            .set('updatedAt', DateTime.now().toUtc().toIso8601String()),
+      );
+
+      return ResponseHelper.success(
+        data: {
+          'deleted': true,
+          '_id': id,
+          'transactionsDeleted': transactionsResult.nRemoved,
+        },
+      );
+    } catch (error) {
+      return ResponseHelper.error(
+        errorMessage: 'Internal server error: $error',
+        statusCode: 500,
+      );
+    }
+  }
+
   /// Функция updateUserBalance: обновляет существующие данные и возвращает обновлённый результат.
   /// Возвращает HTTP-ответ, который backend отправит клиенту.
   static Future<Response> updateUserBalance(Request request, String id) async {
