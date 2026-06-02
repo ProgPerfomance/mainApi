@@ -8,7 +8,10 @@ class UserSubscription {
   UserSubscription({
     required String scope,
     required String appId,
+    List<String>? appIds,
     required this.expiresAt,
+    String? benefitType,
+    this.discountPercent,
     this.autoRenewEnabled = false,
     this.nextChargeAt,
     this.rebillId,
@@ -16,11 +19,16 @@ class UserSubscription {
     this.recurringOrderId,
     this.updatedAt,
   }) : scope = _normalizeScope(scope),
-       appId = _normalizeAppId(appId);
+       appId = _normalizeAppId(appId),
+       appIds = _normalizeAppIds(appIds, appId),
+       benefitType = _normalizeBenefitType(benefitType);
 
   final String scope;
   final String appId;
+  final List<String> appIds;
   final DateTime? expiresAt;
+  final String benefitType;
+  final double? discountPercent;
   final bool autoRenewEnabled;
   final DateTime? nextChargeAt;
   final String? rebillId;
@@ -42,17 +50,25 @@ class UserSubscription {
     if (isGlobal) {
       return true;
     }
-    return this.appId == _normalizeAppId(appId);
+    final normalizedAppId = _normalizeAppId(appId);
+    return this.appId == normalizedAppId || appIds.contains(normalizedAppId);
   }
 
   factory UserSubscription.fromJson(Map<String, dynamic> json) {
+    final appId =
+        json['appId']?.toString() ??
+        json['app_id']?.toString() ??
+        User.defaultAppId;
     return UserSubscription(
       scope: json['scope']?.toString() ?? User.subscriptionScopeApp,
-      appId:
-          json['appId']?.toString() ??
-          json['app_id']?.toString() ??
-          User.defaultAppId,
+      appId: appId,
+      appIds: _parseAppIds(json['appIds'] ?? json['app_ids'], appId),
       expiresAt: User._parseDateTime(json['expiresAt'] ?? json['expires_at']),
+      benefitType:
+          json['benefitType']?.toString() ?? json['benefit_type']?.toString(),
+      discountPercent:
+          (json['discountPercent'] as num?)?.toDouble() ??
+          (json['discount_percent'] as num?)?.toDouble(),
       autoRenewEnabled:
           json['autoRenewEnabled'] == true ||
           json['subscriptionAutoRenewEnabled'] == true,
@@ -75,7 +91,12 @@ class UserSubscription {
       'scope': scope,
       'appId': appId,
       'app_id': appId,
+      'appIds': appIds,
+      'app_ids': appIds,
       if (expiresAt != null) 'expiresAt': expiresAt!.toIso8601String(),
+      'benefitType': benefitType,
+      'benefit_type': benefitType,
+      if (discountPercent != null) 'discountPercent': discountPercent,
       'autoRenewEnabled': autoRenewEnabled,
       if (nextChargeAt != null) 'nextChargeAt': nextChargeAt!.toIso8601String(),
       if (rebillId != null) 'rebillId': rebillId,
@@ -90,7 +111,12 @@ class UserSubscription {
       'scope': scope,
       'appId': appId,
       'app_id': appId,
+      'appIds': appIds,
+      'app_ids': appIds,
       if (expiresAt != null) 'expiresAt': expiresAt!.toIso8601String(),
+      'benefitType': benefitType,
+      'benefit_type': benefitType,
+      if (discountPercent != null) 'discountPercent': discountPercent,
       'hasActiveSubscription': isActive,
       'autoRenewEnabled': autoRenewEnabled,
       if (nextChargeAt != null) 'nextChargeAt': nextChargeAt!.toIso8601String(),
@@ -101,7 +127,10 @@ class UserSubscription {
   UserSubscription copyWith({
     String? scope,
     String? appId,
+    List<String>? appIds,
     DateTime? expiresAt,
+    String? benefitType,
+    double? discountPercent,
     bool? autoRenewEnabled,
     DateTime? nextChargeAt,
     String? rebillId,
@@ -112,7 +141,10 @@ class UserSubscription {
     return UserSubscription(
       scope: scope ?? this.scope,
       appId: appId ?? this.appId,
+      appIds: appIds ?? this.appIds,
       expiresAt: expiresAt ?? this.expiresAt,
+      benefitType: benefitType ?? this.benefitType,
+      discountPercent: discountPercent ?? this.discountPercent,
       autoRenewEnabled: autoRenewEnabled ?? this.autoRenewEnabled,
       nextChargeAt: nextChargeAt ?? this.nextChargeAt,
       rebillId: rebillId ?? this.rebillId,
@@ -129,12 +161,44 @@ class UserSubscription {
         : User.subscriptionScopeApp;
   }
 
+  static String _normalizeBenefitType(String? value) {
+    final normalized = value?.trim().toLowerCase();
+    if (normalized == User.subscriptionBenefitRequestDiscount) {
+      return User.subscriptionBenefitRequestDiscount;
+    }
+    return User.subscriptionBenefitFreeRequests;
+  }
+
   static String _normalizeAppId(String value) {
     final normalized = value.trim().toLowerCase();
     if (normalized.isEmpty) {
       return User.defaultAppId;
     }
     return normalized;
+  }
+
+  static List<String> _normalizeAppIds(List<String>? values, String fallback) {
+    final normalizedValues = <String>{};
+    for (final value in values ?? const <String>[]) {
+      final normalized = _normalizeAppId(value);
+      if (normalized.isNotEmpty) {
+        normalizedValues.add(normalized);
+      }
+    }
+    if (normalizedValues.isEmpty) {
+      normalizedValues.add(_normalizeAppId(fallback));
+    }
+    return normalizedValues.toList();
+  }
+
+  static List<String> _parseAppIds(dynamic value, String fallback) {
+    if (value is Iterable) {
+      return _normalizeAppIds(
+        value.map((item) => item.toString()).toList(),
+        fallback,
+      );
+    }
+    return _normalizeAppIds(null, fallback);
   }
 }
 
@@ -199,6 +263,8 @@ class User {
   static const String globalAppId = 'global';
   static const String subscriptionScopeApp = 'app';
   static const String subscriptionScopeGlobal = 'global';
+  static const String subscriptionBenefitFreeRequests = 'free_requests';
+  static const String subscriptionBenefitRequestDiscount = 'request_discount';
 
   final ObjectId? id;
   final String name;

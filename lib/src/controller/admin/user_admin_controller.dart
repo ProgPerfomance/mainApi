@@ -384,11 +384,17 @@ class UserAdminController {
       final userId = ObjectId.fromHexString(id);
       final user = await _loadEnsuredUser(userId);
       final reason = data['reason']?.toString().trim();
-      final appId = _resolveAppId(data);
+      final appIds = _resolveAppIds(data);
+      final appId = appIds.first;
       final scope = _resolveScope(data);
       final subscriptionAppId = scope == BillingService.subscriptionScopeGlobal
           ? BillingService.globalAppId
           : appId;
+      final subscriptionAppIds = scope == BillingService.subscriptionScopeGlobal
+          ? <String>[BillingService.globalAppId]
+          : appIds;
+      final benefitType = _resolveBenefitType(data);
+      final discountPercent = _resolveDiscountPercent(data, benefitType);
       final now = DateTime.now().toUtc();
       final currentSubscription = user.subscriptionFor(
         scope: scope,
@@ -404,7 +410,10 @@ class UserAdminController {
         UserSubscription(
           scope: scope,
           appId: subscriptionAppId,
+          appIds: subscriptionAppIds,
           expiresAt: expiresAt,
+          benefitType: benefitType,
+          discountPercent: discountPercent,
           autoRenewEnabled: currentSubscription?.autoRenewEnabled ?? false,
           nextChargeAt: currentSubscription?.nextChargeAt,
           rebillId: currentSubscription?.rebillId,
@@ -459,7 +468,13 @@ class UserAdminController {
           'days': days,
           'appId': subscriptionAppId,
           'app_id': subscriptionAppId,
+          'appIds': subscriptionAppIds,
+          'app_ids': subscriptionAppIds,
           'subscriptionScope': scope,
+          'benefitType': benefitType,
+          ...discountPercent == null
+              ? const <String, dynamic>{}
+              : {'discountPercent': discountPercent},
           'previousSubscriptionExpiresAt': currentSubscription?.expiresAt
               ?.toIso8601String(),
           'subscriptionExpiresAt': expiresAt.toIso8601String(),
@@ -516,6 +531,8 @@ class UserAdminController {
                   .toPublicJson(),
         },
       );
+    } on FormatException catch (error) {
+      return ResponseHelper.error(errorMessage: error.message);
     } catch (error) {
       return ResponseHelper.error(
         errorMessage: 'Internal server error: $error',
@@ -546,7 +563,8 @@ class UserAdminController {
       final userId = ObjectId.fromHexString(id);
       final user = await _loadEnsuredUser(userId);
       final reason = data['reason']?.toString().trim();
-      final appId = _resolveAppId(data);
+      final appIds = _resolveAppIds(data);
+      final appId = appIds.first;
       final scope = _resolveScope(data);
       final subscriptionAppId = scope == BillingService.subscriptionScopeGlobal
           ? BillingService.globalAppId
@@ -786,9 +804,46 @@ class UserAdminController {
     );
   }
 
+  static List<String> _resolveAppIds(Map<String, dynamic> data) {
+    final rawAppIds = data['appIds'] ?? data['app_ids'];
+    if (rawAppIds is Iterable) {
+      final appIds = rawAppIds
+          .map((item) => BillingService.normalizeAppId(item?.toString()))
+          .where((item) => item.isNotEmpty)
+          .toSet()
+          .toList();
+      if (appIds.isNotEmpty) {
+        return appIds;
+      }
+    }
+    return [_resolveAppId(data)];
+  }
+
   static String _resolveScope(Map<String, dynamic> data) {
     return BillingService.normalizeSubscriptionScope(
       data['scope']?.toString() ?? data['subscriptionScope']?.toString(),
     );
+  }
+
+  static String _resolveBenefitType(Map<String, dynamic> data) {
+    final value = data['benefitType']?.toString().trim().toLowerCase();
+    if (value == User.subscriptionBenefitRequestDiscount) {
+      return User.subscriptionBenefitRequestDiscount;
+    }
+    return User.subscriptionBenefitFreeRequests;
+  }
+
+  static double? _resolveDiscountPercent(
+    Map<String, dynamic> data,
+    String benefitType,
+  ) {
+    if (benefitType != User.subscriptionBenefitRequestDiscount) {
+      return null;
+    }
+    final value = double.tryParse(data['discountPercent'].toString());
+    if (value == null || value <= 0 || value > 100) {
+      throw const FormatException('Discount must be between 1 and 100');
+    }
+    return value;
   }
 }
