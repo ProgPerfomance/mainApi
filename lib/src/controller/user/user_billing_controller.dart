@@ -802,6 +802,10 @@ class UserBillingController {
       final package = await BillingService.instance.findRequestPackage(
         ObjectId.fromHexString(packageId),
       );
+      BillingService.instance.assertRequestPackageAvailableForApp(
+        package,
+        appId,
+      );
       final amountKopecks = (package.price * 100).round();
       final usersCollection = MongoService.instance.db.collection(
         Collections.users,

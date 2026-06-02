@@ -11,11 +11,13 @@ class RequestPackage {
     required this.requestCount,
     required this.price,
     String? appId,
+    List<String>? appIds,
     String? scope,
     this.isActive = true,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) : appId = _normalizeAppId(appId),
+       appIds = _normalizeAppIds(appIds, appId),
        scope = _normalizeScope(scope),
        createdAt = createdAt ?? DateTime.now(),
        updatedAt = updatedAt ?? DateTime.now();
@@ -24,6 +26,7 @@ class RequestPackage {
   final int requestCount;
   final double price;
   final String appId;
+  final List<String> appIds;
   final String scope;
   final bool isActive;
   final DateTime createdAt;
@@ -36,6 +39,10 @@ class RequestPackage {
       requestCount: (json['requestCount'] as num?)?.toInt() ?? 0,
       price: (json['price'] as num?)?.toDouble() ?? 0,
       appId: json['appId']?.toString() ?? json['app_id']?.toString(),
+      appIds: _parseAppIds(
+        json['appIds'] ?? json['app_ids'],
+        json['appId']?.toString() ?? json['app_id']?.toString(),
+      ),
       scope: json['scope']?.toString(),
       isActive: json['isActive'] != false,
       createdAt: _parseDateTime(json['createdAt']),
@@ -51,6 +58,8 @@ class RequestPackage {
       'price': price,
       'appId': appId,
       'app_id': appId,
+      'appIds': appIds,
+      'app_ids': appIds,
       'scope': scope,
       'isActive': isActive,
       'createdAt': createdAt.toIso8601String(),
@@ -66,6 +75,8 @@ class RequestPackage {
       'price': price,
       'appId': appId,
       'app_id': appId,
+      'appIds': appIds,
+      'app_ids': appIds,
       'scope': scope,
       'isActive': isActive,
       'createdAt': createdAt.toIso8601String(),
@@ -92,6 +103,27 @@ class RequestPackage {
       return 'psychology';
     }
     return normalized;
+  }
+
+  static List<String> _normalizeAppIds(List<String>? values, String? fallback) {
+    final normalizedValues = <String>{};
+    for (final value in values ?? const <String>[]) {
+      final normalized = _normalizeAppId(value);
+      if (normalized.isNotEmpty) {
+        normalizedValues.add(normalized);
+      }
+    }
+    if (normalizedValues.isEmpty) {
+      normalizedValues.add(_normalizeAppId(fallback));
+    }
+    return normalizedValues.toList();
+  }
+
+  static List<String>? _parseAppIds(dynamic value, String? fallback) {
+    if (value is Iterable) {
+      return value.map((item) => item.toString()).toList();
+    }
+    return fallback == null ? null : <String>[fallback];
   }
 
   static String _normalizeScope(String? value) {

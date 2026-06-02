@@ -278,8 +278,8 @@ class MongoService {
     await db
         .collection(Collections.requestPackages)
         .createIndex(
-          keys: {'scope': 1, 'appId': 1, 'requestCount': 1, 'updatedAt': -1},
-          name: 'request_packages_scope_app_count_updated_idx',
+          keys: {'scope': 1, 'appIds': 1, 'requestCount': 1, 'updatedAt': -1},
+          name: 'request_packages_scope_app_ids_count_updated_idx',
         );
   }
 }

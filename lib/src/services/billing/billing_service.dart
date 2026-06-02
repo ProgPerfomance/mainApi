@@ -336,7 +336,7 @@ class BillingService {
         if (item.scope == subscriptionScopeGlobal) {
           return false;
         }
-        return item.appId != normalizedAppId;
+        return !item.appIds.contains(normalizedAppId);
       })
       ..sort((left, right) => left.requestCount.compareTo(right.requestCount));
     return packages;
@@ -346,17 +346,20 @@ class BillingService {
     required int requestCount,
     required double price,
     String? appId,
+    List<String>? appIds,
     String scope = subscriptionScopeApp,
     bool isActive = true,
   }) async {
     // Админ создаёт товар: сколько запросов покупатель получит и сколько это стоит.
     final normalizedScope = normalizeSubscriptionScope(scope);
+    final normalizedAppIds = normalizedScope == subscriptionScopeGlobal
+        ? const <String>[globalAppId]
+        : _normalizeRequestPackageAppIds(appIds, appId);
     final package = RequestPackage(
       requestCount: _normalizeRequestCount(requestCount),
       price: _normalizePackagePrice(price),
-      appId: normalizedScope == subscriptionScopeGlobal
-          ? globalAppId
-          : normalizeAppId(appId),
+      appId: normalizedAppIds.first,
+      appIds: normalizedAppIds,
       scope: normalizedScope,
       isActive: isActive,
       createdAt: DateTime.now().toUtc(),
@@ -381,6 +384,7 @@ class BillingService {
     int? requestCount,
     double? price,
     String? appId,
+    List<String>? appIds,
     String? scope,
     bool? isActive,
   }) async {
@@ -396,9 +400,12 @@ class BillingService {
     final nextScope = scope == null
         ? existing.scope
         : normalizeSubscriptionScope(scope);
-    final nextAppId = nextScope == subscriptionScopeGlobal
-        ? globalAppId
-        : (appId == null ? existing.appId : normalizeAppId(appId));
+    final nextAppIds = nextScope == subscriptionScopeGlobal
+        ? const <String>[globalAppId]
+        : (appIds != null || appId != null)
+        ? _normalizeRequestPackageAppIds(appIds, appId ?? existing.appId)
+        : existing.appIds;
+    final nextAppId = nextAppIds.first;
 
     final result = await _requestPackagesCollection.updateOne(
       where.eq('_id', packageId),
@@ -407,6 +414,8 @@ class BillingService {
           .set('price', nextPrice)
           .set('appId', nextAppId)
           .set('app_id', nextAppId)
+          .set('appIds', nextAppIds)
+          .set('app_ids', nextAppIds)
           .set('scope', nextScope)
           .set('isActive', isActive ?? existing.isActive)
           .set('updatedAt', now.toIso8601String()),
@@ -451,6 +460,10 @@ class BillingService {
     }
 
     return RequestPackage.fromJson(rawPackage);
+  }
+
+  void assertRequestPackageAvailableForApp(RequestPackage package, String appId) {
+    _assertRequestPackageAvailableForApp(package, normalizeAppId(appId));
   }
 
   /// Функция getAiRequestPrice: получает нужное значение и возвращает его вызывающему коду.
@@ -878,6 +891,8 @@ class BillingService {
     // Покупка пакета с внутреннего баланса:
     // пользователь тратит рубли на счёте и получает запас AI-запросов.
     final package = await findRequestPackage(packageId);
+    final normalizedAppId = normalizeAppId(appId);
+    _assertRequestPackageAvailableForApp(package, normalizedAppId);
     final user = await _findUser(userId);
     if (user.balance < package.price) {
       throw BillingServiceException(
@@ -1165,6 +1180,10 @@ class BillingService {
     final normalizedPaidAmount = _normalizeMoneyAmount(paidAmount);
     final now = DateTime.now().toUtc();
     final legacyAppId = normalizeAppId(contextAppId);
+    _assertRequestPackageAvailableForApp(package, legacyAppId);
+    final targetAppId = package.scope == subscriptionScopeGlobal
+        ? globalAppId
+        : legacyAppId;
 
     final existingTransaction = await _findRequestPackageDuplicateTransaction(
       paymentSource: paymentSource,
@@ -1182,7 +1201,7 @@ class BillingService {
 
     final targetBalance = _requestBalanceForScope(
       user.requestBalances,
-      appId: package.appId,
+      appId: targetAppId,
       scope: package.scope,
     );
     final nextRequestBalances = User.upsertRequestBalance(
@@ -1245,6 +1264,8 @@ class BillingService {
         'requestPackageScope': package.scope,
         'appId': package.appId,
         'app_id': package.appId,
+        'appIds': package.appIds,
+        'app_ids': package.appIds,
         'contextAppId': legacyAppId,
         'context_app_id': legacyAppId,
         'paymentId': ?externalPaymentId,
@@ -1577,6 +1598,37 @@ class BillingService {
     return normalized == subscriptionScopeGlobal
         ? subscriptionScopeGlobal
         : subscriptionScopeApp;
+  }
+
+  static List<String> _normalizeRequestPackageAppIds(
+    List<String>? appIds,
+    String? fallbackAppId,
+  ) {
+    final normalizedValues = <String>{};
+    for (final appId in appIds ?? const <String>[]) {
+      normalizedValues.add(normalizeAppId(appId));
+    }
+    if (normalizedValues.isEmpty) {
+      normalizedValues.add(normalizeAppId(fallbackAppId));
+    }
+    return normalizedValues.toList();
+  }
+
+  static void _assertRequestPackageAvailableForApp(
+    RequestPackage package,
+    String appId,
+  ) {
+    if (package.scope == subscriptionScopeGlobal) {
+      return;
+    }
+    final normalizedAppId = normalizeAppId(appId);
+    if (package.appIds.contains(normalizedAppId)) {
+      return;
+    }
+    throw const BillingServiceException(
+      'Request package is not available for this app',
+      statusCode: 409,
+    );
   }
 
   static String _subscriptionSettingsKeyFor({

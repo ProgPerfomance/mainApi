@@ -338,6 +338,7 @@ class BillingAdminController {
         requestCount: requestCount,
         price: price,
         appId: _resolveAppId(request, data),
+        appIds: _resolveAppIds(data),
         scope: _resolveScope(request: request, data: data),
         isActive: data['isActive'] != false,
       );
@@ -379,6 +380,9 @@ class BillingAdminController {
         appId: data['appId'] == null && data['app_id'] == null
             ? null
             : _resolveAppId(request, data),
+        appIds: data['appIds'] == null && data['app_ids'] == null
+            ? null
+            : _resolveAppIds(data),
         scope: data['scope'] == null && data['subscriptionScope'] == null
             ? null
             : _resolveScope(data: data),
@@ -432,6 +436,14 @@ class BillingAdminController {
           request.url.queryParameters['app_id'] ??
           request.headers['x-app-id'],
     );
+  }
+
+  static List<String>? _resolveAppIds(Map<String, dynamic> data) {
+    final value = data['appIds'] ?? data['app_ids'];
+    if (value is Iterable) {
+      return value.map((item) => item.toString()).toList();
+    }
+    return null;
   }
 
   static String _resolveScope({Request? request, Map<String, dynamic>? data}) {
