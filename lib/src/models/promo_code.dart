@@ -67,6 +67,7 @@ class PromoCode {
   final double amount;
   final bool isActive;
   final int? maxRedemptions;
+  final DateTime? expiresAt;
   final List<PromoCodeRedemption> redemptions;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -79,10 +80,16 @@ class PromoCode {
     required this.amount,
     this.isActive = true,
     this.maxRedemptions,
+    this.expiresAt,
     this.redemptions = const [],
     required this.createdAt,
     required this.updatedAt,
   });
+
+  bool get isExpired {
+    final expires = expiresAt;
+    return expires != null && !expires.toUtc().isAfter(DateTime.now().toUtc());
+  }
 
   /// Фабрика PromoCode.fromJson: собирает объект из входных данных.
   /// Возвращает готовый объект этого класса.
@@ -99,6 +106,7 @@ class PromoCode {
       amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
       isActive: json['isActive'] as bool? ?? true,
       maxRedemptions: (json['maxRedemptions'] as num?)?.toInt(),
+      expiresAt: _parseNullableDateTime(json['expiresAt']),
       redemptions: rawRedemptions
           .whereType<Map>()
           .map(
@@ -125,6 +133,7 @@ class PromoCode {
       'amount': amount,
       'isActive': isActive,
       if (maxRedemptions != null) 'maxRedemptions': maxRedemptions,
+      if (expiresAt != null) 'expiresAt': expiresAt!.toIso8601String(),
       'redemptions': redemptions.map((item) => item.toJson()).toList(),
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
@@ -143,6 +152,8 @@ class PromoCode {
       'amount': amount,
       'isActive': isActive,
       if (maxRedemptions != null) 'maxRedemptions': maxRedemptions,
+      if (expiresAt != null) 'expiresAt': expiresAt!.toIso8601String(),
+      'isExpired': isExpired,
       'redemptionsCount': redemptions.length,
       'redemptions': redemptions.map((item) => item.toPublicJson()).toList(),
       'createdAt': createdAt.toIso8601String(),
@@ -179,4 +190,15 @@ DateTime _parseDateTime(dynamic value) {
     return DateTime.now().toUtc();
   }
   return DateTime.tryParse(rawValue)?.toUtc() ?? DateTime.now().toUtc();
+}
+
+DateTime? _parseNullableDateTime(dynamic value) {
+  if (value is DateTime) {
+    return value.toUtc();
+  }
+  final rawValue = value?.toString().trim();
+  if (rawValue == null || rawValue.isEmpty) {
+    return null;
+  }
+  return DateTime.tryParse(rawValue)?.toUtc();
 }

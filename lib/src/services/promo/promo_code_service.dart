@@ -54,6 +54,7 @@ class PromoCodeService {
   static const String promoCodeNotFoundErrorCode = 'PROMO_CODE_NOT_FOUND';
   static const String promoCodeAlreadyUsedErrorCode = 'PROMO_CODE_ALREADY_USED';
   static const String promoCodeInactiveErrorCode = 'PROMO_CODE_INACTIVE';
+  static const String promoCodeExpiredErrorCode = 'PROMO_CODE_EXPIRED';
   static const String promoCodeLimitReachedErrorCode =
       'PROMO_CODE_LIMIT_REACHED';
 
@@ -106,6 +107,7 @@ class PromoCodeService {
     String? campaign,
     required double amount,
     int? maxRedemptions,
+    DateTime? expiresAt,
   }) async {
     final normalizedCode = _normalizeCode(code);
     final normalizedAppId = _normalizeAppId(appId);
@@ -128,6 +130,7 @@ class PromoCodeService {
       campaign: _normalizeCampaign(campaign),
       amount: normalizedAmount,
       maxRedemptions: _normalizeMaxRedemptions(maxRedemptions),
+      expiresAt: expiresAt?.toUtc(),
       createdAt: now,
       updatedAt: now,
     );
@@ -163,6 +166,9 @@ class PromoCodeService {
     double? amount,
     bool? isActive,
     int? maxRedemptions,
+    bool updateMaxRedemptions = false,
+    DateTime? expiresAt,
+    bool updateExpiresAt = false,
   }) async {
     final existingRaw = await _promoCodesCollection.findOne(
       where.eq('_id', promoCodeId),
@@ -188,9 +194,12 @@ class PromoCodeService {
         ? _normalizeMoneyAmount(amount)
         : existingPromoCode.amount;
     final nextIsActive = isActive ?? existingPromoCode.isActive;
-    final nextMaxRedemptions = maxRedemptions != null
+    final nextMaxRedemptions = updateMaxRedemptions
         ? _normalizeMaxRedemptions(maxRedemptions)
         : existingPromoCode.maxRedemptions;
+    final nextExpiresAt = updateExpiresAt
+        ? expiresAt?.toUtc()
+        : existingPromoCode.expiresAt;
 
     if (nextCode != existingPromoCode.code) {
       final duplicate = await _promoCodesCollection.findOne(
@@ -214,6 +223,7 @@ class PromoCodeService {
           .set('amount', nextAmount)
           .set('isActive', nextIsActive)
           .set('maxRedemptions', nextMaxRedemptions)
+          .set('expiresAt', nextExpiresAt?.toIso8601String())
           .set('updatedAt', DateTime.now().toUtc().toIso8601String()),
     );
 
@@ -280,6 +290,14 @@ class PromoCodeService {
         'Promo code is inactive',
         statusCode: 409,
         errorCode: promoCodeInactiveErrorCode,
+      );
+    }
+
+    if (promoCode.isExpired) {
+      throw const PromoCodeServiceException(
+        'Promo code has expired',
+        statusCode: 409,
+        errorCode: promoCodeExpiredErrorCode,
       );
     }
 

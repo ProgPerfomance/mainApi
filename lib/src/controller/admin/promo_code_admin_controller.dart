@@ -35,6 +35,7 @@ class PromoCodeAdminController {
       final code = data['code']?.toString() ?? '';
       final amount = double.tryParse(data['amount']?.toString() ?? '');
       final maxRedemptions = _parseMaxRedemptions(data, allowMissing: true);
+      final expiresAt = _parseExpiresAt(data['expiresAt']);
       if (amount == null || amount <= 0) {
         return ResponseHelper.error(
           errorMessage: 'Amount must be a positive number',
@@ -47,6 +48,7 @@ class PromoCodeAdminController {
         campaign: data['campaign']?.toString(),
         amount: amount,
         maxRedemptions: maxRedemptions,
+        expiresAt: expiresAt,
       );
       return ResponseHelper.success(statusCode: 201, data: promoCode);
     } on PromoCodeServiceException catch (error) {
@@ -78,6 +80,9 @@ class PromoCodeAdminController {
           ? double.tryParse(data['amount']?.toString() ?? '')
           : null;
       final maxRedemptions = _parseMaxRedemptions(data, allowMissing: true);
+      final expiresAt = data.containsKey('expiresAt')
+          ? _parseExpiresAt(data['expiresAt'])
+          : null;
       if (data.containsKey('amount') && (amount == null || amount <= 0)) {
         return ResponseHelper.error(
           errorMessage: 'Amount must be a positive number',
@@ -102,6 +107,9 @@ class PromoCodeAdminController {
         maxRedemptions: data.containsKey('maxRedemptions')
             ? maxRedemptions
             : null,
+        updateMaxRedemptions: data.containsKey('maxRedemptions'),
+        expiresAt: expiresAt,
+        updateExpiresAt: data.containsKey('expiresAt'),
       );
       return ResponseHelper.success(data: promoCode);
     } on PromoCodeServiceException catch (error) {
@@ -170,5 +178,17 @@ class PromoCodeAdminController {
     }
 
     return parsed;
+  }
+
+  static DateTime? _parseExpiresAt(dynamic value) {
+    final rawValue = value?.toString().trim();
+    if (rawValue == null || rawValue.isEmpty) {
+      return null;
+    }
+    final parsed = DateTime.tryParse(rawValue);
+    if (parsed == null) {
+      throw const PromoCodeServiceException('Promo code expiration date is invalid');
+    }
+    return parsed.toUtc();
   }
 }
