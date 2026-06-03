@@ -23,6 +23,9 @@ class AppRegistryAdminController {
       final app = await AppRegistryService.instance.createApp(
         appId: data['appId']?.toString() ?? data['app_id']?.toString() ?? '',
         name: data['name']?.toString() ?? '',
+        displayName: data['displayName']?.toString(),
+        imageUrl: data['imageUrl']?.toString(),
+        shortDescription: data['shortDescription']?.toString(),
         platform: data['platform']?.toString(),
         apiBaseUrl: data['apiBaseUrl']?.toString(),
         settings: _settingsFrom(data),
@@ -64,6 +67,15 @@ class AppRegistryAdminController {
       final app = await AppRegistryService.instance.updateApp(
         appId: appId,
         name: data.containsKey('name') ? data['name']?.toString() : null,
+        displayName: data.containsKey('displayName')
+            ? data['displayName']?.toString()
+            : null,
+        imageUrl: data.containsKey('imageUrl')
+            ? data['imageUrl']?.toString()
+            : null,
+        shortDescription: data.containsKey('shortDescription')
+            ? data['shortDescription']?.toString()
+            : null,
         platform: data.containsKey('platform')
             ? data['platform']?.toString()
             : null,

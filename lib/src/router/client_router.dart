@@ -18,6 +18,7 @@ Router createClientRouter() {
 
   // Публичные настройки приложения.
   router.get('/app/version', AppController.getVersionSettings);
+  router.get('/app/other-apps', AppController.listOtherApps);
 
   // Auth/billing вынесены в отдельный сервис. Без внешнего URL оставляем
   // локальные маршруты, чтобы старый dev-режим и тесты не ломались.

@@ -27,6 +27,9 @@ class AppRegistryService {
   Future<Map<String, dynamic>> createApp({
     required String appId,
     required String name,
+    String? displayName,
+    String? imageUrl,
+    String? shortDescription,
     String? platform,
     String? apiBaseUrl,
     Map<String, dynamic>? settings,
@@ -50,6 +53,9 @@ class AppRegistryService {
       'appId': normalizedAppId,
       'app_id': normalizedAppId,
       'name': normalizedName,
+      'displayName': _stringOrNull(displayName) ?? normalizedName,
+      'imageUrl': _stringOrNull(imageUrl),
+      'shortDescription': _stringOrNull(shortDescription),
       'platform': _normalizePlatform(platform),
       'apiBaseUrl': _stringOrNull(apiBaseUrl),
       'settings': settings ?? <String, dynamic>{},
@@ -60,10 +66,7 @@ class AppRegistryService {
 
     final result = await _apps.insertOne(document);
     if (!result.isSuccess) {
-      throw const AppRegistryException(
-        'Failed to create app',
-        statusCode: 500,
-      );
+      throw const AppRegistryException('Failed to create app', statusCode: 500);
     }
 
     final created = await _apps.findOne(where.eq('_id', result.id));
@@ -73,13 +76,19 @@ class AppRegistryService {
   Future<Map<String, dynamic>> updateApp({
     required String appId,
     String? name,
+    String? displayName,
+    String? imageUrl,
+    String? shortDescription,
     String? platform,
     String? apiBaseUrl,
     bool? isActive,
     Map<String, dynamic>? settings,
   }) async {
     final normalizedAppId = _normalizeAppId(appId);
-    final modifier = modify.set('updatedAt', DateTime.now().toUtc().toIso8601String());
+    final modifier = modify.set(
+      'updatedAt',
+      DateTime.now().toUtc().toIso8601String(),
+    );
 
     if (name != null) {
       final normalizedName = name.trim();
@@ -87,6 +96,18 @@ class AppRegistryService {
         throw const AppRegistryException('App name is required');
       }
       modifier.set('name', normalizedName);
+      if (displayName == null) {
+        modifier.set('displayName', normalizedName);
+      }
+    }
+    if (displayName != null) {
+      modifier.set('displayName', _stringOrNull(displayName) ?? name);
+    }
+    if (imageUrl != null) {
+      modifier.set('imageUrl', _stringOrNull(imageUrl));
+    }
+    if (shortDescription != null) {
+      modifier.set('shortDescription', _stringOrNull(shortDescription));
     }
     if (platform != null) {
       modifier.set('platform', _normalizePlatform(platform));
@@ -148,9 +169,8 @@ class AppRegistryService {
     if (clearPassword) {
       next.remove('passwordEncrypted');
     } else if (normalizedPassword != null) {
-      next['passwordEncrypted'] = await EncryptionService.instance.encryptString(
-        normalizedPassword,
-      );
+      next['passwordEncrypted'] = await EncryptionService.instance
+          .encryptString(normalizedPassword);
     }
     next['updatedAt'] = DateTime.now().toUtc().toIso8601String();
 
@@ -205,11 +225,9 @@ class AppRegistryService {
         final password = await EncryptionService.instance.decryptString(
           settings['passwordEncrypted'],
         );
-        if (_stringOrNull(terminalKey) != null && _stringOrNull(password) != null) {
-          return {
-            'terminalKey': terminalKey!,
-            'password': password!,
-          };
+        if (_stringOrNull(terminalKey) != null &&
+            _stringOrNull(password) != null) {
+          return {'terminalKey': terminalKey!, 'password': password!};
         }
       }
     }
@@ -228,12 +246,52 @@ class AppRegistryService {
     return _toPublicJson(app);
   }
 
+  Future<Map<String, dynamic>> listOtherAppBlocks({String? appId}) async {
+    final normalizedAppId = appId == null || appId.trim().isEmpty
+        ? null
+        : _normalizeAppId(appId);
+    final rows = await _apps
+        .find(where.eq('isActive', true).sortBy('createdAt'))
+        .toList();
+    final apps = rows
+        .map(_toPublicJson)
+        .where((app) => app['appId'] != normalizedAppId)
+        .map(_toRelatedAppJson)
+        .toList();
+
+    final blocks = <Map<String, dynamic>>[];
+    if (apps.isNotEmpty) {
+      blocks.add({
+        'type': 'banner',
+        'title': 'Попробуйте другое приложение',
+        'apps': [apps.first],
+      });
+    }
+    if (apps.length > 1) {
+      blocks.add({
+        'type': 'grid',
+        'title': 'Другие приложения',
+        'columns': 3,
+        'apps': apps.skip(1).toList(),
+      });
+    }
+
+    return {'appId': normalizedAppId, 'blocks': blocks};
+  }
+
   Map<String, dynamic> _toPublicJson(Map<String, dynamic> json) {
+    final name = json['name']?.toString() ?? '';
+    final displayName = json['displayName']?.toString();
     return {
       if (json['_id'] != null) '_id': json['_id'].toString(),
       'appId': json['appId']?.toString() ?? json['app_id']?.toString() ?? '',
       'app_id': json['appId']?.toString() ?? json['app_id']?.toString() ?? '',
-      'name': json['name']?.toString() ?? '',
+      'name': name,
+      'displayName': displayName == null || displayName.trim().isEmpty
+          ? name
+          : displayName,
+      'imageUrl': json['imageUrl']?.toString(),
+      'shortDescription': json['shortDescription']?.toString(),
       'platform': json['platform']?.toString() ?? 'mobile',
       'apiBaseUrl': json['apiBaseUrl']?.toString(),
       'settings': json['settings'] is Map
@@ -247,6 +305,22 @@ class AppRegistryService {
       'isActive': json['isActive'] != false,
       'createdAt': json['createdAt']?.toString(),
       'updatedAt': json['updatedAt']?.toString(),
+    };
+  }
+
+  Map<String, dynamic> _toRelatedAppJson(Map<String, dynamic> app) {
+    final title = app['displayName']?.toString().trim().isNotEmpty == true
+        ? app['displayName'].toString()
+        : app['name']?.toString() ?? app['appId']?.toString() ?? '';
+    return {
+      'appId': app['appId'],
+      'name': app['name'],
+      'title': title,
+      'displayName': title,
+      'shortDescription': app['shortDescription'],
+      'imageUrl': app['imageUrl'],
+      'platform': app['platform'],
+      'apiBaseUrl': app['apiBaseUrl'],
     };
   }
 
@@ -286,7 +360,8 @@ class AppRegistryService {
       appId: appId,
       suffix: 'TERMINAL_KEY',
     );
-    final value = (appKey == null ? null : _envNonEmpty(appKey)) ??
+    final value =
+        (appKey == null ? null : _envNonEmpty(appKey)) ??
         _envNonEmpty('TBANK_TERMINAL_KEY');
     if (value == null) {
       throw const AppRegistryException(
@@ -303,7 +378,8 @@ class AppRegistryService {
       appId: appId,
       suffix: 'PASSWORD',
     );
-    final value = (appKey == null ? null : _envNonEmpty(appKey)) ??
+    final value =
+        (appKey == null ? null : _envNonEmpty(appKey)) ??
         _envNonEmpty('TBANK_PASSWORD');
     if (value == null) {
       throw const AppRegistryException(
