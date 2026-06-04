@@ -26,6 +26,7 @@ class AppRegistryAdminController {
         displayName: data['displayName']?.toString(),
         imageUrl: data['imageUrl']?.toString(),
         shortDescription: data['shortDescription']?.toString(),
+        ruStoreUrl: data['ruStoreUrl']?.toString(),
         platform: data['platform']?.toString(),
         apiBaseUrl: data['apiBaseUrl']?.toString(),
         settings: _settingsFrom(data),
@@ -75,6 +76,9 @@ class AppRegistryAdminController {
             : null,
         shortDescription: data.containsKey('shortDescription')
             ? data['shortDescription']?.toString()
+            : null,
+        ruStoreUrl: data.containsKey('ruStoreUrl')
+            ? data['ruStoreUrl']?.toString()
             : null,
         platform: data.containsKey('platform')
             ? data['platform']?.toString()

@@ -30,6 +30,7 @@ class AppRegistryService {
     String? displayName,
     String? imageUrl,
     String? shortDescription,
+    String? ruStoreUrl,
     String? platform,
     String? apiBaseUrl,
     Map<String, dynamic>? settings,
@@ -56,6 +57,7 @@ class AppRegistryService {
       'displayName': _stringOrNull(displayName) ?? normalizedName,
       'imageUrl': _stringOrNull(imageUrl),
       'shortDescription': _stringOrNull(shortDescription),
+      'ruStoreUrl': _stringOrNull(ruStoreUrl),
       'platform': _normalizePlatform(platform),
       'apiBaseUrl': _stringOrNull(apiBaseUrl),
       'settings': settings ?? <String, dynamic>{},
@@ -79,6 +81,7 @@ class AppRegistryService {
     String? displayName,
     String? imageUrl,
     String? shortDescription,
+    String? ruStoreUrl,
     String? platform,
     String? apiBaseUrl,
     bool? isActive,
@@ -108,6 +111,9 @@ class AppRegistryService {
     }
     if (shortDescription != null) {
       modifier.set('shortDescription', _stringOrNull(shortDescription));
+    }
+    if (ruStoreUrl != null) {
+      modifier.set('ruStoreUrl', _stringOrNull(ruStoreUrl));
     }
     if (platform != null) {
       modifier.set('platform', _normalizePlatform(platform));
@@ -292,6 +298,7 @@ class AppRegistryService {
           : displayName,
       'imageUrl': json['imageUrl']?.toString(),
       'shortDescription': json['shortDescription']?.toString(),
+      'ruStoreUrl': json['ruStoreUrl']?.toString(),
       'platform': json['platform']?.toString() ?? 'mobile',
       'apiBaseUrl': json['apiBaseUrl']?.toString(),
       'settings': json['settings'] is Map
@@ -319,6 +326,7 @@ class AppRegistryService {
       'displayName': title,
       'shortDescription': app['shortDescription'],
       'imageUrl': app['imageUrl'],
+      'ruStoreUrl': app['ruStoreUrl'],
       'platform': app['platform'],
       'apiBaseUrl': app['apiBaseUrl'],
     };
