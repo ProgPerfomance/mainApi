@@ -22,6 +22,7 @@ void addAccountBillingRoutes(Router router) {
   router.post('/auth/password-reset/confirm', UserAuthController.resetPassword);
   router.post('/auth/profile', UserAuthController.getProfile);
   router.post('/auth/referral/apply', UserAuthController.applyReferralCode);
+  router.post('/auth/referrals', UserAuthController.listReferrals);
   router.post('/auth/delete', UserAuthController.deleteAccount);
 
   // Деньги пользователя.

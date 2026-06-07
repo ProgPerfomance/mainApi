@@ -517,6 +517,55 @@ class UserAuthController {
     }
   }
 
+  static Future<Response> listReferrals(Request request) async {
+    try {
+      final data = await parseRequestDataHelper(request);
+      final userObjectId = JwtService.instance.resolveUserId(
+        request,
+        data['userId']?.toString(),
+      );
+
+      final usersCollection = MongoService.instance.db.collection(
+        Collections.users,
+      );
+      final rawReferrals = await usersCollection
+          .find(where.eq('referredByUserId', userObjectId))
+          .toList();
+
+      final referrals = <User>[];
+      for (final rawReferral in rawReferrals) {
+        referrals.add(
+          await ReferralService.instance.ensureUserReferralCode(
+            User.fromJson(rawReferral),
+          ),
+        );
+      }
+
+      referrals.sort((left, right) {
+        final leftDate = left.referralAppliedAt ?? left.createdAt;
+        final rightDate = right.referralAppliedAt ?? right.createdAt;
+        return rightDate.compareTo(leftDate);
+      });
+
+      return ResponseHelper.success(
+        data: {
+          'count': referrals.length,
+          'referrals': referrals.map(_toReferralJson).toList(),
+        },
+      );
+    } on JwtAuthException catch (e) {
+      return ResponseHelper.error(
+        errorMessage: e.message,
+        statusCode: e.statusCode,
+      );
+    } catch (e) {
+      return ResponseHelper.error(
+        errorMessage: 'Internal server error: ${e.toString()}',
+        statusCode: 500,
+      );
+    }
+  }
+
   static Future<Response> deleteAccount(Request request) async {
     try {
       final data = await parseRequestDataHelper(request);
@@ -577,6 +626,20 @@ class UserAuthController {
         statusCode: 500,
       );
     }
+  }
+
+  static Map<String, dynamic> _toReferralJson(User user) {
+    return {
+      '_id': user.id?.oid,
+      'name': user.name,
+      'email': user.email,
+      if (user.avatarUrl != null) 'avatarUrl': user.avatarUrl,
+      'referralCode': user.referralCode,
+      'appliedReferralCode': user.appliedReferralCode,
+      'createdAt': user.createdAt.toIso8601String(),
+      if (user.referralAppliedAt != null)
+        'referralAppliedAt': user.referralAppliedAt!.toIso8601String(),
+    };
   }
 
   /// Хеширование пароля через SHA-256.
