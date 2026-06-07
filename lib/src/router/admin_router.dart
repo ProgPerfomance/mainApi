@@ -6,6 +6,7 @@ import 'package:main_api/src/controller/admin/admin_auth_controller.dart';
 import 'package:main_api/src/controller/admin/app_registry_admin_controller.dart';
 import 'package:main_api/src/controller/admin/billing_admin_controller.dart';
 import 'package:main_api/src/controller/admin/app_admin_controller.dart';
+import 'package:main_api/src/controller/admin/custom_content_admin_controller.dart';
 import 'package:main_api/src/controller/admin/promo_code_admin_controller.dart';
 import 'package:main_api/src/controller/admin/user_admin_controller.dart';
 import 'package:main_api/src/controller/admin/wish_admin_controller.dart';
@@ -54,6 +55,40 @@ Handler createAdminRouter({String basePath = '/admin'}) {
   );
   router.get('/api/app/version', AppAdminController.getVersionSettings);
   router.put('/api/app/version', AppAdminController.updateVersionSettings);
+
+  // Универсальный кастомный контент приложений.
+  router.get(
+    '/api/content/collections',
+    CustomContentAdminController.listCollections,
+  );
+  router.post(
+    '/api/content/collections',
+    CustomContentAdminController.createCollection,
+  );
+  router.put(
+    '/api/content/collections/<collectionKey>',
+    CustomContentAdminController.updateCollection,
+  );
+  router.delete(
+    '/api/content/collections/<collectionKey>',
+    CustomContentAdminController.deleteCollection,
+  );
+  router.get(
+    '/api/content/collections/<collectionKey>/items',
+    CustomContentAdminController.listItems,
+  );
+  router.post(
+    '/api/content/collections/<collectionKey>/items',
+    CustomContentAdminController.createItem,
+  );
+  router.put(
+    '/api/content/collections/<collectionKey>/items/<itemId>',
+    CustomContentAdminController.updateItem,
+  );
+  router.delete(
+    '/api/content/collections/<collectionKey>/items/<itemId>',
+    CustomContentAdminController.deleteItem,
+  );
 
   // Настройки стоимости AI-запроса и реферального бонуса.
   router.get(

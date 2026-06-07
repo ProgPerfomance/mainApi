@@ -3,6 +3,7 @@
 // Комментарии в файле объясняют, что делает код и что он возвращает, без сложных слов.
 
 import 'package:main_api/src/controller/app/app_controller.dart';
+import 'package:main_api/src/controller/custom_content/custom_content_controller.dart';
 import 'package:main_api/src/controller/wish/wish_controller.dart';
 import 'package:main_api/src/controller/wish/wish_request_controller.dart';
 import 'package:main_api/src/router/account_billing_router.dart';
@@ -19,6 +20,14 @@ Router createClientRouter() {
   // Публичные настройки приложения.
   router.get('/app/version', AppController.getVersionSettings);
   router.get('/app/other-apps', AppController.listOtherApps);
+
+  // Универсальный read-only контент конкретного приложения.
+  router.get('/content/collections', CustomContentController.listCollections);
+  router.get('/content/<collectionKey>', CustomContentController.listItems);
+  router.get(
+    '/content/<collectionKey>/<itemId>',
+    CustomContentController.getItem,
+  );
 
   // Auth/billing вынесены в отдельный сервис. Без внешнего URL оставляем
   // локальные маршруты, чтобы старый dev-режим и тесты не ломались.

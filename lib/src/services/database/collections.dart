@@ -16,4 +16,6 @@ class Collections {
   static const String requestPackages = 'request_packages';
   static const String subscriptionPlans = 'subscription_plans';
   static const String relatedAppBlocks = 'related_app_blocks';
+  static const String customContentCollections = 'custom_content_collections';
+  static const String customContentItems = 'custom_content_items';
 }
