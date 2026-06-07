@@ -36,6 +36,22 @@ Handler createAdminRouter({String basePath = '/admin'}) {
     '/api/apps/<appId>/tbank/reveal',
     AppRegistryAdminController.revealTBankSettings,
   );
+  router.get(
+    '/api/related-app-blocks',
+    AppRegistryAdminController.listRelatedAppBlocks,
+  );
+  router.post(
+    '/api/related-app-blocks',
+    AppRegistryAdminController.createRelatedAppBlock,
+  );
+  router.put(
+    '/api/related-app-blocks/<blockId>',
+    AppRegistryAdminController.updateRelatedAppBlock,
+  );
+  router.delete(
+    '/api/related-app-blocks/<blockId>',
+    AppRegistryAdminController.deleteRelatedAppBlock,
+  );
   router.get('/api/app/version', AppAdminController.getVersionSettings);
   router.put('/api/app/version', AppAdminController.updateVersionSettings);
 

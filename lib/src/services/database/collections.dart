@@ -15,4 +15,5 @@ class Collections {
   static const String tbankPayments = 'tbank_payments';
   static const String requestPackages = 'request_packages';
   static const String subscriptionPlans = 'subscription_plans';
+  static const String relatedAppBlocks = 'related_app_blocks';
 }
