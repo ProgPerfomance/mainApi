@@ -4,6 +4,7 @@
 
 import 'package:main_api/src/models/transaction.dart';
 import 'package:main_api/src/models/request_package.dart';
+import 'package:main_api/src/models/subscription_plan.dart';
 import 'package:main_api/src/models/user.dart';
 import 'package:main_api/src/services/app_config.dart';
 import 'package:main_api/src/services/database/collections.dart';
@@ -214,6 +215,9 @@ class BillingService {
   DbCollection get _requestPackagesCollection =>
       _db.collection(Collections.requestPackages);
 
+  DbCollection get _subscriptionPlansCollection =>
+      _db.collection(Collections.subscriptionPlans);
+
   Future<SubscriptionSettings> getSubscriptionSettings({
     String? appId,
     String scope = subscriptionScopeApp,
@@ -222,6 +226,14 @@ class BillingService {
     final normalizedAppId = normalizedScope == subscriptionScopeGlobal
         ? globalAppId
         : normalizeAppId(appId);
+    final planSettings = await _subscriptionSettingsFromPlan(
+      appId: normalizedAppId,
+      scope: normalizedScope,
+    );
+    if (planSettings != null) {
+      return planSettings;
+    }
+
     final settingsKey = _subscriptionSettingsKeyFor(
       appId: normalizedAppId,
       scope: normalizedScope,
@@ -307,6 +319,56 @@ class BillingService {
       appId: normalizedAppId,
       scope: normalizedScope,
       updatedAt: now,
+    );
+  }
+
+  Future<SubscriptionSettings?> _subscriptionSettingsFromPlan({
+    required String appId,
+    required String scope,
+  }) async {
+    final normalizedScope = normalizeSubscriptionScope(scope);
+    final normalizedAppId = normalizedScope == subscriptionScopeGlobal
+        ? globalAppId
+        : normalizeAppId(appId);
+    final rawPlans = await _subscriptionPlansCollection.find().toList();
+    final plans =
+        rawPlans
+            .map(SubscriptionPlan.fromJson)
+            .where((plan) => plan.isActive && plan.price >= 0)
+            .toList()
+          ..sort((left, right) => right.updatedAt.compareTo(left.updatedAt));
+
+    SubscriptionPlan? selectedPlan;
+    if (normalizedScope == subscriptionScopeApp) {
+      for (final plan in plans) {
+        if (plan.scope == subscriptionScopeApp &&
+            plan.appIds.contains(normalizedAppId)) {
+          selectedPlan = plan;
+          break;
+        }
+      }
+    }
+    if (selectedPlan == null) {
+      for (final plan in plans) {
+        if (plan.scope == subscriptionScopeGlobal) {
+          selectedPlan = plan;
+          break;
+        }
+      }
+    }
+
+    if (selectedPlan == null) {
+      return null;
+    }
+
+    return SubscriptionSettings(
+      name: selectedPlan.name,
+      price: selectedPlan.price,
+      appId: selectedPlan.scope == subscriptionScopeGlobal
+          ? globalAppId
+          : selectedPlan.primaryAppId,
+      scope: selectedPlan.scope,
+      updatedAt: selectedPlan.updatedAt,
     );
   }
 
@@ -462,7 +524,10 @@ class BillingService {
     return RequestPackage.fromJson(rawPackage);
   }
 
-  void assertRequestPackageAvailableForApp(RequestPackage package, String appId) {
+  void assertRequestPackageAvailableForApp(
+    RequestPackage package,
+    String appId,
+  ) {
     _assertRequestPackageAvailableForApp(package, normalizeAppId(appId));
   }
 
